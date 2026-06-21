@@ -1,0 +1,6 @@
+[submodule "third_party/tas_client_api"]
+	path = third_party/tas_client_api
+	url = https://github.com/Infineon/tas_client_api.git
+[submodule "third_party/illd_release_tc4x"]
+	path = third_party/illd_release_tc4x
+	url = https://github.com/Infineon/illd_release_tc4x.git

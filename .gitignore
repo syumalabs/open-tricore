@@ -1,0 +1,25 @@
+# Build artifacts
+/build/
+**/build/
+*.o
+*.a
+*.so
+*.elf
+
+# Python venv / caches
+/.venv/
+__pycache__/
+
+# Conan / CMake generated
+CMakeUserPresets.json
+conan_toolchain.cmake
+CMakeCache.txt
+CMakeFiles/
+
+# Logs
+*.log
+
+# Proprietary Infineon binaries (tas_server, DAS .deb). NOT redistributable.
+# Users download these themselves. See docs/linux-setup.md.
+/vendor/*
+!/vendor/README.md

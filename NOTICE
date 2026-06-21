@@ -1,0 +1,10 @@
+open-tricore
+Copyright 2026 Syuma Labs
+
+This product includes software developed by Syuma Labs, licensed under the
+Apache License, Version 2.0 (see LICENSE).
+
+This repository references and builds upon third-party software under their
+respective licenses (see the third_party/ directory and docs/). Proprietary
+vendor binaries required at runtime (e.g. Infineon's tas_server) are NOT
+included or redistributed here and must be obtained separately by the user.
