@@ -47,6 +47,15 @@ uint32_t get_reg(mcd_addr_st a);
 int tcmcd_read(uint64_t addr, uint8_t *buf, uint32_t len);
 int tcmcd_write(uint64_t addr, const uint8_t *buf, uint32_t len);
 
+/* PFLASH programming over the command sequence interface. erase wipes every 16K
+   sector covering [addr, addr+len). program writes data starting at a 32-byte
+   page aligned address, padding the final page with 0xFF. Both refuse any target
+   outside PFLASH, so the UCB region (passwords and protection) is never touched.
+   Return 0 on success, -1 on failure. The sector size is TCMCD_FLASH_SECTOR. */
+#define TCMCD_FLASH_SECTOR 0x4000u
+int tcmcd_flash_erase(uint64_t addr, uint64_t len);
+int tcmcd_flash_program(uint64_t addr, const uint8_t *data, uint32_t len);
+
 /* Close the core and shut down MCD, if open. */
 void tcmcd_close(void);
 

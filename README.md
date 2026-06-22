@@ -17,14 +17,14 @@ A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every l
 - Full hosted C runtime proven on chip, printf, malloc, and recursion all run
 - Real UART serial console at 115200, printf goes out `/dev/ttyUSB0`
 - Boot from reset, flashed code runs on power-up with no debugger attached
-- Source-level debugging with [`tools/tc-gdbserver`](tools/tc-gdbserver), breakpoints, single step, registers, and memory in GDB
+- Source-level debugging with [`tools/tc-gdbserver`](tools/tc-gdbserver), breakpoints, single step, registers, and memory in GDB, and GDB `load` programs flash directly over vFlash
 
 Roadmap.
 
 - Interrupts and a timer tick in the BSP
 - More peripheral drivers, a GPIO API, timer, ADC, and SPI
 - The PPU, the TC4x vector accelerator and the standout differentiator
-- Debugger conveniences, GDB `load` straight to flash, watchpoints, the six cores as GDB threads
+- Debugger conveniences, watchpoints and the six cores as GDB threads
 
 ## Layout
 

@@ -6,9 +6,10 @@
  *
  * Supports connecting to the target, register and memory read and write,
  * disassembly via ELF symbols, single step, continue, asynchronous stop
- * (Ctrl-C), and hardware breakpoints via MCD instruction-pointer triggers.
- * One thread. Note that a breakpoint on a function that the compiler inlined
- * will not hit, its symbol address is never executed.
+ * (Ctrl-C), hardware breakpoints via MCD instruction-pointer triggers, and GDB
+ * load straight to flash over vFlash (it serves a memory map so GDB knows the
+ * flash region). One thread. Note that a breakpoint on a function that the
+ * compiler inlined will not hit, its symbol address is never executed.
  *
  * Usage, tc-gdbserver [port], default port 3333. Point GDB at it with
  *   tricore-elf-gdb your.elf -ex 'target remote :3333'
@@ -189,10 +190,81 @@ static void handle_z(int fd, const char *p) {
     rsp_put_str(fd, "OK");
 }
 
+/* --- flash load via vFlash --- */
+
+/* Memory map served over qXfer so GDB uses vFlash for the flash region and M for
+   RAM. blocksize is the 16K erase sector. */
+static const char MEMMAP[] =
+    "<?xml version=\"1.0\"?>\n"
+    "<!DOCTYPE memory-map PUBLIC \"+//IDN gnu.org//DTD GDB Memory Map V1.0//EN\""
+    " \"http://sourceware.org/gdb/gdb-memory-map.dtd\">\n"
+    "<memory-map>\n"
+    "  <memory type=\"flash\" start=\"0xa0000000\" length=\"0x1400000\">\n"
+    "    <property name=\"blocksize\">0x4000</property>\n"
+    "  </memory>\n"
+    "  <memory type=\"ram\" start=\"0x70000000\" length=\"0x40000\"/>\n"
+    "  <memory type=\"ram\" start=\"0x70100000\" length=\"0x10000\"/>\n"
+    "</memory-map>\n";
+
+/* Serve one chunk of a qXfer document. args is "offset,length" in hex. */
+static void qxfer_reply(int fd, const char *doc, const char *args) {
+    unsigned long off = strtoul(args, NULL, 16);
+    const char *comma = strchr(args, ',');
+    unsigned long length = comma ? strtoul(comma + 1, NULL, 16) : 0;
+    size_t doclen = strlen(doc);
+    if (off >= doclen) { rsp_put_str(fd, "l"); return; }
+    size_t avail = doclen - off, chunk = length < avail ? length : avail;
+    char *out = malloc(chunk + 2);
+    out[0] = (off + chunk >= doclen) ? 'l' : 'm';
+    memcpy(out + 1, doc + off, chunk);
+    rsp_put_packet(fd, out, chunk + 1);
+    free(out);
+}
+
+/* Flash image accumulated across vFlashWrite, programmed at vFlashDone. */
+static uint8_t *g_fbuf = NULL;
+static uint64_t g_fbase = 0;
+static size_t   g_fcap = 0, g_flen = 0;
+
+/* vFlashWrite:addr:BINARY, the binary payload is escaped with 0x7d. p points at
+   the whole packet, n is its length. Returns 0 on success, -1 on error. */
+static int flash_write(const char *p, int n) {
+    const char *c1 = strchr(p, ':'); if (!c1) return -1;
+    uint64_t addr = strtoull(c1 + 1, NULL, 16);
+    const char *c2 = strchr(c1 + 1, ':'); if (!c2) return -1;
+    const char *d = c2 + 1;
+    int dlen = n - (int)(d - p);
+    if (dlen < 0) return -1;
+    if (!g_fbuf) { g_fbase = addr; g_fcap = 0x1000; g_fbuf = malloc(g_fcap); memset(g_fbuf, 0xFF, g_fcap); g_flen = 0; }
+    if (addr < g_fbase) return -1;
+    size_t off = (size_t)(addr - g_fbase);
+    if (off + (size_t)dlen > g_fcap) {
+        size_t nc = g_fcap; while (nc < off + (size_t)dlen) nc *= 2;
+        g_fbuf = realloc(g_fbuf, nc);
+        memset(g_fbuf + g_fcap, 0xFF, nc - g_fcap);
+        g_fcap = nc;
+    }
+    size_t w = off;
+    for (int i = 0; i < dlen; i++) {
+        uint8_t b = (uint8_t)d[i];
+        if (b == 0x7d) { i++; b = (uint8_t)d[i] ^ 0x20; } /* unescape */
+        g_fbuf[w++] = b;
+    }
+    if (w > g_flen) g_flen = w;
+    return 0;
+}
+
+static int flash_done(void) {
+    int rc = 0;
+    if (g_fbuf) { rc = tcmcd_flash_program(g_fbase, g_fbuf, (uint32_t)g_flen); free(g_fbuf); g_fbuf = NULL; g_fcap = g_flen = 0; }
+    return rc;
+}
+
 /* --- packet handlers --- */
 
 static void handle_q(int fd, const char *p) {
-    if (!strncmp(p, "qSupported", 10))      rsp_put_str(fd, "PacketSize=1000");
+    if (!strncmp(p, "qSupported", 10))      rsp_put_str(fd, "PacketSize=1000;qXfer:memory-map:read+");
+    else if (!strncmp(p, "qXfer:memory-map:read:", 22)) { const char *a = strrchr(p, ':'); qxfer_reply(fd, MEMMAP, a ? a + 1 : ""); }
     else if (!strcmp(p, "qAttached"))       rsp_put_str(fd, "1");
     else if (!strcmp(p, "qC"))              rsp_put_str(fd, "QC1");
     else if (!strcmp(p, "qfThreadInfo"))    rsp_put_str(fd, "m1");
@@ -201,7 +273,7 @@ static void handle_q(int fd, const char *p) {
     else                                    rsp_put_str(fd, "");
 }
 
-static void handle_v(int fd, const char *p) {
+static void handle_v(int fd, const char *p, int n) {
     if (!strcmp(p, "vMustReplyEmpty"))    rsp_put_str(fd, "");
     else if (!strcmp(p, "vCont?"))        rsp_put_str(fd, "vCont;c;C;s;S");
     else if (!strncmp(p, "vCont;", 6)) {
@@ -210,6 +282,14 @@ static void handle_v(int fd, const char *p) {
         else if (a == 'c' || a == 'C') do_continue(fd);
         else                           rsp_put_str(fd, "");
     }
+    else if (!strncmp(p, "vFlashErase:", 12)) {
+        const char *comma = strchr(p + 12, ',');
+        uint64_t a = strtoull(p + 12, NULL, 16);
+        uint64_t l = comma ? strtoull(comma + 1, NULL, 16) : 0;
+        rsp_put_str(fd, tcmcd_flash_erase(a, l) ? "E01" : "OK");
+    }
+    else if (!strncmp(p, "vFlashWrite:", 12)) rsp_put_str(fd, flash_write(p, n) ? "E01" : "OK");
+    else if (!strcmp(p, "vFlashDone"))        rsp_put_str(fd, flash_done() ? "E01" : "OK");
     else rsp_put_str(fd, "");
 }
 
@@ -291,7 +371,7 @@ static void serve(int fd) {
             case 'm': handle_m(fd, buf); break;
             case 'M': handle_M(fd, buf); break;
             case 'q': handle_q(fd, buf); break;
-            case 'v': handle_v(fd, buf); break;
+            case 'v': handle_v(fd, buf, n); break;
             case 'Z': handle_Z(fd, buf); break;
             case 'z': handle_z(fd, buf); break;
             case 'H': rsp_put_str(fd, "OK"); break;

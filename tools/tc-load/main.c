@@ -28,12 +28,9 @@
 #include <stdint.h>
 #include <unistd.h>
 
-/* flash command interface */
-#define CMD_BASE   0xF8080000u
 #define HCI_STATUS 0xF8040004u
-#define BUSY_MASK  0x000F0FFFu
 #define PAGE_LEN   32u
-#define SECTOR_LEN 0x4000u
+#define SECTOR_LEN TCMCD_FLASH_SECTOR
 #define FLASH_SAFE_MIN 0xA0000000u  /* whole PFLASH incl boot bank, all recoverable via debugger */
 #define FLASH_SAFE_MAX 0xA1400000u  /* refuses the UCB region (0xAE...) which holds passwords */
 #define FLASH_VIEW_MIN 0xA0000000u
@@ -96,21 +93,6 @@ static int cmd_run(int argc, char **argv) {
     return 0;
 }
 
-static int wait_unbusy(const char *what){
-    for (int i=0;i<200000;i++){ if ((rd32(HCI_STATUS) & BUSY_MASK)==0) return 0; usleep(50); }
-    fprintf(stderr, "timeout after %s, status=0x%08X\n", what, rd32(HCI_STATUS)); return 1;
-}
-static int program_page(uint64_t pageAddr, const uint32_t *w){
-    wr32(CMD_BASE|0x5554, 0xFA);
-    wr32(CMD_BASE|0x5554, 0x50);
-    for (int i=0;i<8;i++) wr32(CMD_BASE|0x55f4, w[i]);
-    wr32(CMD_BASE|0xaa50, (uint32_t)pageAddr);
-    wr32(CMD_BASE|0xaa58, 0);
-    wr32(CMD_BASE|0xaaa8, 0xa0);
-    wr32(CMD_BASE|0xaaa8, 0xaa);
-    return wait_unbusy("program");
-}
-
 static int cmd_flash(int argc, char **argv) {
     if (argc < 3) { fprintf(stderr, "usage: tc-load flash <target-hex> [file.bin]\n"); return 2; }
     uint64_t target = strtoull(argv[2], NULL, 0);
@@ -130,19 +112,11 @@ static int cmd_flash(int argc, char **argv) {
         uint32_t pat[8]; for (int i=0;i<8;i++) pat[i]=0x5417C0DEu+i; memcpy(img, pat, len);
         printf("Programming test pattern -> 0x%08llX\n", (unsigned long long)target);
     }
-    if (len > SECTOR_LEN) { fprintf(stderr, "payload spans >1 sector, not supported\n"); return 2; }
 
     open_target(1);
-    wr32(CMD_BASE|0x5554, 0xFA);
-    wr32(CMD_BASE|0xaa50, (uint32_t)target);
-    wr32(CMD_BASE|0xaa58, 1);
-    wr32(CMD_BASE|0xaaa8, 0x80);
-    wr32(CMD_BASE|0xaaa8, 0x50);
-    if (wait_unbusy("erase")) return 1;
-    printf("Erased 16K sector at 0x%08llX\n", (unsigned long long)target);
-
-    for (uint32_t off=0; off<len; off+=PAGE_LEN) { uint32_t w[8]; memcpy(w, img+off, PAGE_LEN); if (program_page(target+off, w)) return 1; }
-    wr32(CMD_BASE|0x5554, 0xf0);
+    if (tcmcd_flash_erase(target, len)) { fprintf(stderr, "erase failed\n"); return 1; }
+    printf("Erased %u sectors from 0x%08llX\n", (len + SECTOR_LEN - 1)/SECTOR_LEN, (unsigned long long)target);
+    if (tcmcd_flash_program(target, img, len)) { fprintf(stderr, "program failed\n"); return 1; }
     printf("Programmed %u pages\n", len/PAGE_LEN);
 
     int ok=1, faults=0;

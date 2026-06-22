@@ -116,6 +116,60 @@ int tcmcd_write(uint64_t addr, const uint8_t *buf, uint32_t len) {
     return 0;
 }
 
+/* --- PFLASH programming --- */
+
+#define FCMD_BASE   0xF8080000u   /* flash command interface */
+#define FHCI_STATUS 0xF8040004u
+#define FBUSY_MASK  0x000F0FFFu
+#define FPAGE       32u
+#define FLASH_MIN   0xA0000000u   /* whole PFLASH incl boot bank, all recoverable */
+#define FLASH_MAX   0xA1400000u   /* refuses the UCB region (0xAE...), passwords */
+
+static int w32(uint64_t a, uint32_t v) { return xfer(a, &v, 4, MCD_TX_AT_W) ? -1 : 0; }
+static int flash_wait(void) {
+    for (int i = 0; i < 200000; i++) {
+        uint32_t s = 0;
+        if (xfer(FHCI_STATUS, &s, 4, MCD_TX_AT_R)) return -1;
+        if ((s & FBUSY_MASK) == 0) return 0;
+        usleep(50);
+    }
+    return -1;
+}
+static int flash_range_ok(uint64_t addr, uint64_t len) {
+    return addr >= FLASH_MIN && (addr + len) <= FLASH_MAX;
+}
+
+int tcmcd_flash_erase(uint64_t addr, uint64_t len) {
+    if (!flash_range_ok(addr, len)) return -1;
+    uint64_t s0 = addr & ~(uint64_t)(TCMCD_FLASH_SECTOR - 1);
+    for (uint64_t s = s0; s < addr + len; s += TCMCD_FLASH_SECTOR) {
+        if (w32(FCMD_BASE | 0x5554, 0xFA) || w32(FCMD_BASE | 0xaa50, (uint32_t)s) ||
+            w32(FCMD_BASE | 0xaa58, 1)    || w32(FCMD_BASE | 0xaaa8, 0x80) ||
+            w32(FCMD_BASE | 0xaaa8, 0x50)) return -1;
+        if (flash_wait()) return -1;
+    }
+    return 0;
+}
+
+int tcmcd_flash_program(uint64_t addr, const uint8_t *data, uint32_t len) {
+    if (!flash_range_ok(addr, len) || (addr & (FPAGE - 1))) return -1;
+    for (uint32_t off = 0; off < len; off += FPAGE) {
+        uint32_t w[8];
+        for (int i = 0; i < 8; i++) {
+            uint8_t b[4];
+            for (int k = 0; k < 4; k++) { uint32_t idx = off + i*4 + k; b[k] = idx < len ? data[idx] : 0xFF; }
+            w[i] = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
+        }
+        if (w32(FCMD_BASE | 0x5554, 0xFA) || w32(FCMD_BASE | 0x5554, 0x50)) return -1;
+        for (int i = 0; i < 8; i++) if (w32(FCMD_BASE | 0x55f4, w[i])) return -1;
+        if (w32(FCMD_BASE | 0xaa50, (uint32_t)(addr + off)) || w32(FCMD_BASE | 0xaa58, 0) ||
+            w32(FCMD_BASE | 0xaaa8, 0xa0) || w32(FCMD_BASE | 0xaaa8, 0xaa)) return -1;
+        if (flash_wait()) return -1;
+    }
+    w32(FCMD_BASE | 0x5554, 0xf0); /* back to read mode */
+    return 0;
+}
+
 void tcmcd_close(void) {
     if (g_core) { mcd_close_core_f(g_core); mcd_exit_f(); g_core = NULL; }
 }

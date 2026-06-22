@@ -89,9 +89,12 @@ Connect GDB with the ELF, so it has symbols and the TriCore architecture.
 tricore-elf-gdb boot_uart.elf -ex "target remote :3333"
 ```
 
-Then debug as usual.
+Then program flash and debug, all from GDB. The gdbserver serves a memory map,
+so GDB's `load` programs the flash region directly over vFlash, no separate
+`tc-load flash` step needed. You can still flash with `tc-load` if you prefer.
 
 ```
+(gdb) load               # program the ELF straight to flash over vFlash
 (gdb) break main
 (gdb) continue
 Breakpoint 1, 0xa000027e in main ()
@@ -121,7 +124,8 @@ that is actually called, or compile that translation unit at `-O0`.
 | `tc-load boot` | reset and release so the boot ROM runs flashed code |
 
 `tc-gdbserver [port]`, GDB remote stub, default port 3333. Supports registers,
-memory, disassembly, single step, continue, Ctrl-C, and hardware breakpoints.
+memory, disassembly, single step, continue, Ctrl-C, hardware breakpoints, and
+GDB `load` straight to flash over vFlash.
 
 ## Notes
 
