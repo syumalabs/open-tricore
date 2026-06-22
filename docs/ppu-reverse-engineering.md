@@ -129,11 +129,42 @@ effect. The blocking unknowns:
 - Whether the assembler target (`-mcpu=archs`) exactly matches ARC EV71, our
   instructions could decode differently on the real core.
 
-These cannot be separated without observing the ARC program counter, and MCD
-does not expose the PPU core while the PPU DEBUG block (`0xF9820000`) has no PC
-readout. The remaining work is to determine the reset entry and the core's CSM
-view, either by further reverse engineering or from the ARC EV71 ISA and the
-MetaWare linker layout.
+These cannot be separated without observing the ARC program counter.
+
+## The ARC debug port (found, not yet activated)
+
+The DEBUG block at `0xF9820000` is the ARC OCDS host interface, a command and
+status port that maps onto the standard ARC debug transactions:
+
+| Register | Address | Fields |
+|---|---|---|
+| DB_STATUS | 0xF9820000 | bit0 ST stalled, bit1 FL fail, bit2 RD ready, bit4 RU ARC running, bit5 RA reset applied |
+| DB_CMD    | 0xF9820004 | bits[3:0] command |
+| DB_ADDR   | 0xF9820008 | aux/core/memory address |
+| DB_DATA   | 0xF982000C | data |
+| DB_RESET  | 0xF9820010 | system reset request |
+
+The 4-bit command uses the standard ARC encoding (confirmed against OpenOCD's
+ARC target), 0 write mem, 1 write core reg, 2 write aux reg, 3 NOP, 4 read mem,
+5 read core reg, 6 read aux reg. Relevant ARC aux registers, PC at aux `0x6`,
+STATUS32 at aux `0xA` (halt is bit 0), DEBUG at aux `0x5` (force halt), IDENTITY
+at aux `0x4`. So in principle this port reads the ARC PC and registers and can
+halt and single step the core, exactly the visibility we lack.
+
+Writes to the DEBUG block are gated by the PPU Access Protection Unit, the entry
+is `PPU_AP_ACCEN_DEBUG_WRA` at `0xF9840060` (open it to 0xFFFFFFFF). But even with
+that open, the port does not yet accept transactions, `DB_STATUS` reflects the
+run state (RU) and clears `RU` when the core is halted via `CTRL.REQH`, but the
+ready bit never sets and command writes have no visible effect. The port appears
+to need a further OCDS level activation, or the ARC must be put into true debug
+mode rather than the CTRL halt (which sleeps or clock-halts the core). Cracking
+that activation is the highest-value next step, it would give full ARC visibility
+(PC, registers, single step) and almost certainly resolve the reset entry and
+CSM view questions, turning this into a working PPU debugger.
+
+The remaining work is either to activate this debug port, or to obtain the reset
+entry and the core's CSM view from the ARC EV71 documentation and the MetaWare
+linker layout.
 
 ## Tooling
 
