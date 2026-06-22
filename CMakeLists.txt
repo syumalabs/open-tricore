@@ -35,5 +35,7 @@ set_target_properties(tas_client PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${TAS_INC};${TAS_SOCKET_INC}")
 target_link_libraries(tas_client INTERFACE tas_socket)
 
+add_subdirectory(tools/common)
 add_subdirectory(tools/led-demo)
 add_subdirectory(tools/tc-load)
+add_subdirectory(tools/tc-gdbserver)

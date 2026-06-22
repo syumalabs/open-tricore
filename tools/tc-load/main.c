@@ -1,21 +1,26 @@
 /*
  * tc-load drives the TC4x over the Infineon MCD API (libmcdxdas), the same
- * backend as tas_server. Two subcommands.
+ * backend as tas_server. The MCD connection and access primitives live in the
+ * shared tcmcd unit. Subcommands.
  *
- *   tc-load run   <file.bin> <load-hex> [dump <buf-hex>]
+ *   tc-load run   <file.bin> <load-hex> [dump <buf-hex> | free]
  *       Load a flat binary into RAM (skipped if the address is in flash),
- *       set CPU0 PC to it, run, then either verify the selftest four ways or,
- *       with dump, read back a captured text buffer.
+ *       set CPU0 PC to it, run, then either verify the selftest four ways,
+ *       dump a captured text buffer, or leave it running (free).
  *
  *   tc-load flash <target-hex> [file.bin]
  *       Erase one 16K PFLASH sector and program it, then verify by read-back.
- *       With no file it writes a test pattern. Refuses targets below 0xA0200000
- *       so it can never touch the boot bank, and never writes UCBs.
+ *       Refuses targets outside PFLASH so it never writes the UCBs.
+ *
+ *   tc-load peek  <addr-hex> [count]
+ *   tc-load watch <file.bin> <load-hex> <counter-hex> <gap-ms>
+ *   tc-load boot
+ *       Reset and release so the boot ROM runs flashed code from the BMHD.
  *
  * Copyright 2026 Syuma Labs. Apache-2.0.
  */
 
-#include "mcd_api.h"
+#include "tcmcd.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,81 +37,6 @@
 #define FLASH_SAFE_MIN 0xA0000000u  /* whole PFLASH incl boot bank, all recoverable via debugger */
 #define FLASH_SAFE_MAX 0xA1400000u  /* refuses the UCB region (0xAE...) which holds passwords */
 #define FLASH_VIEW_MIN 0xA0000000u
-
-static const mcd_core_st *g_core = NULL;
-static uint32_t g_msid = 0;
-
-static void die(const char *what, mcd_return_et ret) {
-    fprintf(stderr, "ERROR: %s (ret=%d)\n", what, (int)ret);
-    if (g_core) { mcd_error_info_st ei; mcd_qry_error_info_f(g_core, &ei); fprintf(stderr, "  mcd: %s\n", ei.error_str); }
-    exit(1);
-}
-static mcd_return_et xfer(uint64_t addr, void *data, uint32_t n, mcd_tx_access_type_et at) {
-    mcd_tx_st tx; memset(&tx, 0, sizeof(tx));
-    tx.addr.address = addr; tx.addr.mem_space_id = g_msid;
-    tx.access_type = at; tx.options = MCD_TX_OPT_DEFAULT; tx.access_width = 4;
-    tx.data = (uint8_t *)data; tx.num_bytes = n;
-    mcd_txlist_st txl = { &tx, 1, 0 };
-    return mcd_execute_txlist_f(g_core, &txl);
-}
-static uint32_t rd32(uint64_t a){ uint32_t v=0; if (xfer(a,&v,4,MCD_TX_AT_R)) die("rd32",0); return v; }
-static void     wr32(uint64_t a, uint32_t v){ if (xfer(a,&v,4,MCD_TX_AT_W)) die("wr32",0); }
-static int      rd32_try(uint64_t a, uint32_t *v){ *v=0; return xfer(a,v,4,MCD_TX_AT_R) ? -1 : 0; }
-
-/* connect, enumerate to CPU0, open it, pick a memory space.
-   halt=1 resets and halts for loading. halt=0 resets and lets it boot from flash. */
-static void open_target(int halt) {
-    mcd_api_version_st ver = { MCD_API_VER_MAJOR, MCD_API_VER_MINOR, MCD_API_VER_AUTHOR };
-    mcd_impl_version_info_st impl;
-    if (mcd_initialize_f(&ver, &impl)) { fprintf(stderr, "mcd_initialize failed\n"); exit(1); }
-    static mcd_server_st *server = NULL;
-    if (mcd_open_server_f("", "", &server)) die("open_server", 0);
-    uint32_t n;
-    static mcd_core_con_info_st sys, dev;
-    n = 1; if (mcd_qry_systems_f(0, &n, &sys) || !n) die("qry_systems", 0);
-    n = 1; if (mcd_qry_devices_f(&sys, 0, &n, &dev) || !n) die("qry_devices", 0);
-    uint32_t ncores = 0; mcd_qry_cores_f(&dev, 0, &ncores, NULL);
-    mcd_core_con_info_st *cores = calloc(ncores, sizeof(*cores));
-    if (mcd_qry_cores_f(&dev, 0, &ncores, cores) || !ncores) die("qry_cores", 0);
-    static mcd_core_st *core = NULL;
-    if (mcd_open_core_f(&cores[0], &core)) die("open_core", 0);
-    g_core = core;
-    /* reset, halting for load or releasing to boot from flash */
-    uint32_t rstv = 0;
-    if (mcd_qry_rst_classes_f(core, &rstv) == 0 && rstv != 0) mcd_rst_f(core, rstv, halt ? 1 : 0);
-    uint32_t nms = 0; mcd_qry_mem_spaces_f(core, 0, &nms, NULL);
-    mcd_memspace_st *ms = calloc(nms, sizeof(*ms)); mcd_qry_mem_spaces_f(core, 0, &nms, ms);
-    g_msid = ms[0].mem_space_id;
-    if (halt && mcd_stop_f(core, 1)) die("stop", 0);
-    printf("Device %s, %s.\n", dev.device, halt ? "core 0 halted" : "reset and released to boot from flash");
-}
-
-static int find_pc(mcd_addr_st *pc) {
-    uint32_t ngrp = 0; mcd_qry_reg_groups_f(g_core, 0, &ngrp, NULL);
-    for (uint32_t g = 0; g < ngrp; g++) {
-        uint32_t nr = 0; mcd_qry_reg_map_f(g_core, g, 0, &nr, NULL);
-        mcd_register_info_st *ri = calloc(nr, sizeof(*ri));
-        mcd_qry_reg_map_f(g_core, g, 0, &nr, ri);
-        for (uint32_t i = 0; i < nr; i++)
-            if (!strcmp(ri[i].regname, "PC") || !strcmp(ri[i].regname, "pc")) { *pc = ri[i].addr; free(ri); return 1; }
-        free(ri);
-    }
-    return 0;
-}
-static void set_reg(mcd_addr_st a, uint32_t v) {
-    mcd_tx_st tx; memset(&tx, 0, sizeof(tx));
-    tx.addr = a; tx.access_type = MCD_TX_AT_W; tx.access_width = 4;
-    tx.data = (uint8_t *)&v; tx.num_bytes = 4;
-    mcd_txlist_st txl = { &tx, 1, 0 };
-    if (mcd_execute_txlist_f(g_core, &txl)) die("set reg", 0);
-}
-static uint32_t get_reg(mcd_addr_st a) {
-    uint32_t v = 0; mcd_tx_st tx; memset(&tx, 0, sizeof(tx));
-    tx.addr = a; tx.access_type = MCD_TX_AT_R; tx.access_width = 4;
-    tx.data = (uint8_t *)&v; tx.num_bytes = 4;
-    mcd_txlist_st txl = { &tx, 1, 0 };
-    mcd_execute_txlist_f(g_core, &txl); return v;
-}
 
 static int cmd_run(int argc, char **argv) {
     if (argc < 4) { fprintf(stderr, "usage: tc-load run <file.bin> <load-hex> [dump <buf-hex>]\n"); return 2; }
@@ -286,6 +216,6 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[1], "watch")) rc = cmd_watch(argc, argv);
     else if (!strcmp(argv[1], "boot"))  rc = cmd_boot(argc, argv);
     else { fprintf(stderr, "unknown subcommand %s\n", argv[1]); return 2; }
-    if (g_core) { mcd_close_core_f(g_core); mcd_exit_f(); }
+    tcmcd_close();
     return rc;
 }

@@ -26,11 +26,13 @@ if ! command -v makeinfo >/dev/null; then
     exit 1
 fi
 
-echo "Building GCC stage 2. This takes 20 to 40 minutes on a many-core host."
+echo "Building GCC stage 2 and GDB. This takes 20 to 40 minutes on a many-core host."
 rm -rf "$SRC/build"
 mkdir "$SRC/build"
-( cd "$SRC/build" && ../configure --prefix="$PREFIX" && make -j"$(nproc)" stamps/build-gcc-stage2 )
+( cd "$SRC/build" && ../configure --prefix="$PREFIX" && \
+  make -j"$(nproc)" stamps/build-gcc-stage2 stamps/build-gdb )
 
 echo "Done. Compiler is at $PREFIX/bin/tricore-elf-gcc"
+echo "Debugger is at $PREFIX/bin/tricore-elf-gdb"
 echo "Add it to PATH with"
 echo "  export PATH=\"$PREFIX/bin:\$PATH\""
