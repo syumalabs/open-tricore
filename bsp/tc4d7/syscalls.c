@@ -11,21 +11,19 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define OUT_BUF   0x7003A000u
-#define OUT_LIMIT 0x1000u   /* 4K of captured text */
-
 /* _sbrk is provided by the toolchain libos, backed by the __HEAP symbols
    defined in hosted.ld. */
 
-/* Define both write and _write so these override the libgloss virtio
-   semihosting versions, which otherwise spin waiting for a host. */
+extern void uart_putc(char c);
+
+/* Route stdout/stderr to the ASCLIN0 UART. Define both write and _write so
+   these override the libgloss virtio semihosting versions. */
 int write(int fd, const char *buf, int len) {
     (void)fd;
-    volatile unsigned int *cnt = (volatile unsigned int *)OUT_BUF;
-    volatile unsigned char *out = (volatile unsigned char *)(OUT_BUF + 4);
-    unsigned int c = *cnt;
-    for (int i = 0; i < len && c < OUT_LIMIT; i++) out[c++] = (unsigned char)buf[i];
-    *cnt = c;
+    for (int i = 0; i < len; i++) {
+        if (buf[i] == '\n') uart_putc('\r');
+        uart_putc(buf[i]);
+    }
     return len;
 }
 int _write(int fd, const char *buf, int len) { return write(fd, buf, len); }

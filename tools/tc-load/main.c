@@ -70,6 +70,9 @@ static void open_target(void) {
     static mcd_core_st *core = NULL;
     if (mcd_open_core_f(&cores[0], &core)) die("open_core", 0);
     g_core = core;
+    /* reset and halt for a clean, known state */
+    uint32_t rstv = 0;
+    if (mcd_qry_rst_classes_f(core, &rstv) == 0 && rstv != 0) mcd_rst_f(core, rstv, 1);
     uint32_t nms = 0; mcd_qry_mem_spaces_f(core, 0, &nms, NULL);
     mcd_memspace_st *ms = calloc(nms, sizeof(*ms)); mcd_qry_mem_spaces_f(core, 0, &nms, ms);
     g_msid = ms[0].mem_space_id;
@@ -109,6 +112,7 @@ static int cmd_run(int argc, char **argv) {
     uint64_t load = strtoull(argv[3], NULL, 0);
     int dump = (argc > 5 && !strcmp(argv[4], "dump"));
     uint64_t dumpaddr = dump ? strtoull(argv[5], NULL, 0) : 0;
+    int free_run = (argc > 4 && !strcmp(argv[4], "free"));
 
     FILE *f = fopen(argv[2], "rb"); if (!f) { perror("open bin"); return 1; }
     fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
@@ -137,6 +141,7 @@ static int cmd_run(int argc, char **argv) {
     set_reg(pc, (uint32_t)load);
     printf("Set PC = 0x%08X, running\n", (uint32_t)load);
     if (mcd_run_f(g_core, 1)) die("run", 0);
+    if (free_run) { printf("Core left running (free mode), not halting.\n"); return 0; }
     uint32_t hb1=0, hb2=0;
     if (!dump) { hb1 = rd32(0x70000000); usleep(150000); hb2 = rd32(0x70000000); }
     else usleep(300000);
@@ -215,11 +220,62 @@ static int cmd_flash(int argc, char **argv) {
     return ok?0:1;
 }
 
+static int cmd_peek(int argc, char **argv) {
+    if (argc < 3) { fprintf(stderr, "usage: tc-load peek <addr-hex> [count]\n"); return 2; }
+    uint64_t a = strtoull(argv[2], NULL, 0);
+    int n = (argc > 3) ? atoi(argv[3]) : 1;
+    open_target();
+    for (int i = 0; i < n; i++) {
+        uint32_t v;
+        if (rd32_try(a + 4*i, &v)) printf("  0x%08llX: <fault>\n", (unsigned long long)(a + 4*i));
+        else printf("  0x%08llX: 0x%08X\n", (unsigned long long)(a + 4*i), v);
+    }
+    return 0;
+}
+
+static int cmd_watch(int argc, char **argv) {
+    /* tc-load watch <file.bin> <load-hex> <counter-hex> <gap-ms>
+       Loads and runs the firmware (like run), then samples a RAM counter twice
+       live while the core runs, to measure its increment rate. */
+    if (argc < 6) { fprintf(stderr, "usage: tc-load watch <file.bin> <load-hex> <counter-hex> <gap-ms>\n"); return 2; }
+    uint64_t load = strtoull(argv[3], NULL, 0);
+    uint64_t counter = strtoull(argv[4], NULL, 0);
+    int ms = atoi(argv[5]);
+
+    FILE *f = fopen(argv[2], "rb"); if (!f) { perror("open bin"); return 1; }
+    fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
+    uint8_t *img = malloc(sz);
+    if (fread(img, 1, sz, f) != (size_t)sz) { perror("read"); return 1; }
+    fclose(f);
+
+    open_target();
+    mcd_addr_st pc; if (!find_pc(&pc)) die("PC register not found", 0);
+    const uint32_t CHUNK = 512;
+    for (long off = 0; off < sz; off += CHUNK) {
+        uint32_t nb = (uint32_t)((sz - off) < CHUNK ? (sz - off) : CHUNK);
+        if (xfer(load + off, img + off, nb, MCD_TX_AT_W)) die("write image chunk", 0);
+    }
+    wr32(counter, 0);
+    set_reg(pc, (uint32_t)load);
+    if (mcd_run_f(g_core, 1)) die("run", 0);
+    uint32_t v0 = rd32(counter);
+    usleep((useconds_t)ms * 1000);
+    uint32_t v1 = rd32(counter);
+    mcd_stop_f(g_core, 1);
+    unsigned long rate = (unsigned long)(v1 - v0) * 1000UL / (ms ? ms : 1);
+    printf("counter 0x%llX: %u -> %u, delta %u over %d ms = %lu /s\n",
+           (unsigned long long)counter, v0, v1, (v1 - v0), ms, rate);
+    printf("implied baud (bytes/s * 10) = %lu\n", rate * 10UL);
+    return 0;
+}
+
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "usage: %s run|flash ...\n", argv[0]); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: %s run|flash|peek|watch ...\n", argv[0]); return 2; }
     int rc;
     if (!strcmp(argv[1], "run"))        rc = cmd_run(argc, argv);
     else if (!strcmp(argv[1], "flash")) rc = cmd_flash(argc, argv);
+    else if (!strcmp(argv[1], "peek"))  rc = cmd_peek(argc, argv);
+    else if (!strcmp(argv[1], "watch")) rc = cmd_watch(argc, argv);
     else { fprintf(stderr, "unknown subcommand %s\n", argv[1]); return 2; }
     if (g_core) { mcd_close_core_f(g_core); mcd_exit_f(); }
     return rc;
