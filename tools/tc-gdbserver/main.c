@@ -5,9 +5,10 @@
  * silicon for source-level inspection, registers, and memory.
  *
  * Supports connecting to the target, register and memory read and write,
- * disassembly via ELF symbols, single step, continue, and asynchronous stop
- * (Ctrl-C). One thread. Breakpoints (Z and z) are not implemented yet, GDB
- * falls back to software breakpoints, which work for RAM loaded code.
+ * disassembly via ELF symbols, single step, continue, asynchronous stop
+ * (Ctrl-C), and hardware breakpoints via MCD instruction-pointer triggers.
+ * One thread. Note that a breakpoint on a function that the compiler inlined
+ * will not hit, its symbol address is never executed.
  *
  * Usage, tc-gdbserver [port], default port 3333. Point GDB at it with
  *   tricore-elf-gdb your.elf -ex 'target remote :3333'
@@ -134,11 +135,59 @@ static void do_step(int fd) {
     wait_and_report(fd);
 }
 
-/* Breakpoints, Z and z packets, are not implemented yet. The MCD instruction
-   pointer trigger path (mcd_create_trig_f with MCD_TRIG_TYPE_IP) creates and
-   activates without error but does not halt the core, still under investigation.
-   Z and z fall through to an empty reply, so GDB uses software breakpoints,
-   which work for RAM loaded code. */
+/* --- breakpoints, MCD instruction-pointer triggers --- */
+
+#define MAX_BP 16
+static struct { uint64_t addr; uint32_t trig_id; int used; } g_bp[MAX_BP];
+
+/* Insert a hardware breakpoint at addr. Both GDB software (Z0) and hardware
+   (Z1) breakpoints map here, since target code is usually in flash where a
+   software trap cannot be written. Returns 0 on success, -1 on failure. */
+static int bp_set(uint64_t addr) {
+    for (int i = 0; i < MAX_BP; i++) if (g_bp[i].used && g_bp[i].addr == addr) return 0;
+    mcd_trig_simple_core_st t; memset(&t, 0, sizeof(t));
+    t.struct_size = sizeof(t);
+    t.type        = MCD_TRIG_TYPE_IP;
+    t.option      = MCD_TRIG_OPT_DEFAULT;        /* platform picks, resolves to hardware here */
+    t.action      = MCD_TRIG_ACTION_DBG_DEBUG;   /* halt this core into debug mode */
+    t.addr_start.address = addr;
+    t.addr_start.mem_space_id = g_msid;
+    t.addr_range  = 0;                            /* single address */
+    uint32_t id = 0;
+    if (mcd_create_trig_f(g_core, &t, &id)) return -1;
+    mcd_activate_trig_set_f(g_core);
+    for (int i = 0; i < MAX_BP; i++) if (!g_bp[i].used) { g_bp[i].addr = addr; g_bp[i].trig_id = id; g_bp[i].used = 1; return 0; }
+    return -1;                                     /* table full */
+}
+
+static void bp_clear(uint64_t addr) {
+    for (int i = 0; i < MAX_BP; i++)
+        if (g_bp[i].used && g_bp[i].addr == addr) {
+            mcd_remove_trig_f(g_core, g_bp[i].trig_id);
+            mcd_activate_trig_set_f(g_core);
+            g_bp[i].used = 0;
+            return;
+        }
+}
+
+static void handle_Z(int fd, const char *p) {
+    int type = p[1] - '0';
+    if (type != 0 && type != 1) { rsp_put_str(fd, ""); return; } /* watchpoints not yet supported */
+    const char *comma = strchr(p, ',');
+    if (!comma) { rsp_put_str(fd, "E01"); return; }
+    uint64_t addr = strtoull(comma + 1, NULL, 16);
+    rsp_put_str(fd, bp_set(addr) ? "E01" : "OK");
+}
+
+static void handle_z(int fd, const char *p) {
+    int type = p[1] - '0';
+    if (type != 0 && type != 1) { rsp_put_str(fd, ""); return; }
+    const char *comma = strchr(p, ',');
+    if (!comma) { rsp_put_str(fd, "E01"); return; }
+    uint64_t addr = strtoull(comma + 1, NULL, 16);
+    bp_clear(addr);
+    rsp_put_str(fd, "OK");
+}
 
 /* --- packet handlers --- */
 
@@ -243,6 +292,8 @@ static void serve(int fd) {
             case 'M': handle_M(fd, buf); break;
             case 'q': handle_q(fd, buf); break;
             case 'v': handle_v(fd, buf); break;
+            case 'Z': handle_Z(fd, buf); break;
+            case 'z': handle_z(fd, buf); break;
             case 'H': rsp_put_str(fd, "OK"); break;
             case 'T': rsp_put_str(fd, "OK"); break;   /* thread alive */
             case 'c': do_continue(fd); break;
