@@ -22,7 +22,7 @@ sudo ./toolchain/tricore-gcc-toolchain/scripts/install-apt-dependencies
 ./toolchain/build.sh
 ```
 
-The script clones the pinned harness into `toolchain/tricore-gcc-toolchain`, fetches the gcc, binutils, and newlib sources, and builds GCC stage 2. It installs into `toolchain/install`. Expect 20 to 40 minutes.
+The script clones the pinned harness into `toolchain/tricore-gcc-toolchain`, fetches the gcc, binutils, and newlib sources, and builds GCC stage 2 and GDB. It installs `tricore-elf-gcc` and `tricore-elf-gdb` into `toolchain/install`. Expect 20 to 40 minutes.
 
 ## Use
 

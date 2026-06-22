@@ -7,7 +7,10 @@ the other. The result is source-level debugging on Linux, breakpoints, single
 step, register and memory inspection, and stack unwinding, for code running from
 RAM or flash on real silicon.
 
-This document is the plan. No gdbserver code exists yet.
+Status, implemented. tc-gdbserver is built and verified on chip, registers,
+memory, disassembly, single step, continue, Ctrl-C, and hardware breakpoints all
+work. This document is kept as the design rationale. See
+[`debugging.md`](debugging.md) for how to use it.
 
 ## Goals and scope
 

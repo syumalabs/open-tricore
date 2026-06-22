@@ -58,6 +58,18 @@ ss -tlnp | grep 24817
 
 You should see the target identify as the TC4D7, the cores reset and halt, and the LEDs alternate with each step confirmed by reading `P03_IN` back from the chip.
 
+## Next steps
+
+To compile your own code, build the toolchain.
+
+```bash
+sudo ./toolchain/tricore-gcc-toolchain/scripts/install-apt-dependencies   # first time only
+./toolchain/build.sh
+export PATH="$PWD/toolchain/install/bin:$PATH"
+```
+
+Then follow [`debugging.md`](debugging.md) to compile a program, run it over UART, flash it, boot from reset, and debug it in GDB.
+
 ## Notes
 
 - `tas_server` runs fine after the install. The udev rule lets it open the device without root.
