@@ -8,7 +8,7 @@ Maintained by Syuma Labs.
 
 ## Status
 
-A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every layer validated on real silicon over the on-board DAP debugger. Current release is v0.4.
+A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every layer validated on real silicon over the on-board DAP debugger. Current release is v1.0.
 
 - Connect to the chip from Linux via Infineon's TAS server, read and write any memory or peripheral register with hardware read-back verification
 - Open-source `tricore-elf` GCC and GDB toolchain (GCC 13.4, binutils 2.40, newlib, GDB 14), see [`toolchain/`](toolchain)
