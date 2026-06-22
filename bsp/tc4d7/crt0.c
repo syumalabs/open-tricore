@@ -1,9 +1,9 @@
 /*
- * Minimal TC4x C runtime startup. Sets the stack and small-data base
- * registers, builds the Context Save Area free list, initializes data and bss,
- * then calls main. The CSA list build follows the iLLD initCSA algorithm and
- * must run before any function call, so it is inlined here in _cstart, which is
- * entered by a jump, not a call.
+ * Minimal TC4x C runtime startup. Disables the watchdogs, sets the stack and
+ * small-data base registers, builds the Context Save Area free list,
+ * initializes data and bss, then calls main. The CSA list build follows the
+ * iLLD initCSA algorithm and must run before any function call, so it is
+ * inlined here in _cstart, which is entered by a jump, not a call.
  *
  * Copyright 2026 Syuma Labs. Apache-2.0.
  */
@@ -23,9 +23,34 @@ static inline void mtcr(unsigned int id, unsigned int v) {
 #define CPU_FCX 0xFE38u
 #define CPU_LCX 0xFE3Cu
 
+/* WTU watchdog control registers. The CPU0 and system watchdogs are live out
+   of reset with a ~10ms timeout and reset us before main if not handled. */
+#define WDTCPU0_CTRLA ((volatile unsigned int *)0xF000003Cu)
+#define WDTCPU0_CTRLB ((volatile unsigned int *)0xF0000040u)
+#define WDTSYS_CTRLA  ((volatile unsigned int *)0xF00001A8u)
+#define WDTSYS_CTRLB  ((volatile unsigned int *)0xF00001ACu)
+
+/* Disable one watchdog. Password is CTRLA.PW (bits 15:1) XOR 0x7F, per the iLLD
+   SSW. Unlock by writing CTRLA with LCK=0 and the password, set CTRLB.DR, then
+   re-lock. Always inlined so there is no call before the CSA exists. */
+static inline __attribute__((always_inline))
+void wdt_off(volatile unsigned int *ctrla, volatile unsigned int *ctrlb)
+{
+    unsigned int a = *ctrla;
+    unsigned int pw = ((a >> 1) & 0x7FFFu) ^ 0x007Fu;
+    a = (a & ~0x1u & ~(0x7FFFu << 1)) | (pw << 1); /* LCK=0, PW=password */
+    *ctrla = a;                                     /* unlock */
+    *ctrlb = *ctrlb | 0x1u;                         /* DR=1, disable request */
+    *ctrla = a | 0x1u;                              /* LCK=1, re-lock */
+}
+
 __attribute__((used, section(".text._cstart")))
 void _cstart(void)
 {
+    /* Silence the watchdogs first, before anything can time out. */
+    wdt_off(WDTCPU0_CTRLA, WDTCPU0_CTRLB);
+    wdt_off(WDTSYS_CTRLA, WDTSYS_CTRLB);
+
     /* Build the CSA free list, inline, no calls before this completes. */
     unsigned int *b = __csa_begin, *e = __csa_end;
     unsigned int num = ((unsigned int)e - (unsigned int)b) / 64u;

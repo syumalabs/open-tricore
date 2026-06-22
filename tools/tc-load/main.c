@@ -29,8 +29,8 @@
 #define BUSY_MASK  0x000F0FFFu
 #define PAGE_LEN   32u
 #define SECTOR_LEN 0x4000u
-#define FLASH_SAFE_MIN 0xA0200000u
-#define FLASH_SAFE_MAX 0xA1400000u
+#define FLASH_SAFE_MIN 0xA0000000u  /* whole PFLASH incl boot bank, all recoverable via debugger */
+#define FLASH_SAFE_MAX 0xA1400000u  /* refuses the UCB region (0xAE...) which holds passwords */
 #define FLASH_VIEW_MIN 0xA0000000u
 
 static const mcd_core_st *g_core = NULL;
@@ -53,8 +53,9 @@ static uint32_t rd32(uint64_t a){ uint32_t v=0; if (xfer(a,&v,4,MCD_TX_AT_R)) di
 static void     wr32(uint64_t a, uint32_t v){ if (xfer(a,&v,4,MCD_TX_AT_W)) die("wr32",0); }
 static int      rd32_try(uint64_t a, uint32_t *v){ *v=0; return xfer(a,v,4,MCD_TX_AT_R) ? -1 : 0; }
 
-/* connect, enumerate to CPU0, open it, pick a memory space, halt */
-static void open_target(void) {
+/* connect, enumerate to CPU0, open it, pick a memory space.
+   halt=1 resets and halts for loading. halt=0 resets and lets it boot from flash. */
+static void open_target(int halt) {
     mcd_api_version_st ver = { MCD_API_VER_MAJOR, MCD_API_VER_MINOR, MCD_API_VER_AUTHOR };
     mcd_impl_version_info_st impl;
     if (mcd_initialize_f(&ver, &impl)) { fprintf(stderr, "mcd_initialize failed\n"); exit(1); }
@@ -70,14 +71,14 @@ static void open_target(void) {
     static mcd_core_st *core = NULL;
     if (mcd_open_core_f(&cores[0], &core)) die("open_core", 0);
     g_core = core;
-    /* reset and halt for a clean, known state */
+    /* reset, halting for load or releasing to boot from flash */
     uint32_t rstv = 0;
-    if (mcd_qry_rst_classes_f(core, &rstv) == 0 && rstv != 0) mcd_rst_f(core, rstv, 1);
+    if (mcd_qry_rst_classes_f(core, &rstv) == 0 && rstv != 0) mcd_rst_f(core, rstv, halt ? 1 : 0);
     uint32_t nms = 0; mcd_qry_mem_spaces_f(core, 0, &nms, NULL);
     mcd_memspace_st *ms = calloc(nms, sizeof(*ms)); mcd_qry_mem_spaces_f(core, 0, &nms, ms);
     g_msid = ms[0].mem_space_id;
-    if (mcd_stop_f(core, 1)) die("stop", 0);
-    printf("Device %s, core 0 halted.\n", dev.device);
+    if (halt && mcd_stop_f(core, 1)) die("stop", 0);
+    printf("Device %s, %s.\n", dev.device, halt ? "core 0 halted" : "reset and released to boot from flash");
 }
 
 static int find_pc(mcd_addr_st *pc) {
@@ -120,7 +121,7 @@ static int cmd_run(int argc, char **argv) {
     if (fread(img, 1, sz, f) != (size_t)sz) { perror("read"); return 1; }
     fclose(f);
 
-    open_target();
+    open_target(1);
     mcd_addr_st pc; if (!find_pc(&pc)) die("PC register not found", 0);
 
     if (load >= FLASH_VIEW_MIN) {
@@ -201,7 +202,7 @@ static int cmd_flash(int argc, char **argv) {
     }
     if (len > SECTOR_LEN) { fprintf(stderr, "payload spans >1 sector, not supported\n"); return 2; }
 
-    open_target();
+    open_target(1);
     wr32(CMD_BASE|0x5554, 0xFA);
     wr32(CMD_BASE|0xaa50, (uint32_t)target);
     wr32(CMD_BASE|0xaa58, 1);
@@ -224,7 +225,7 @@ static int cmd_peek(int argc, char **argv) {
     if (argc < 3) { fprintf(stderr, "usage: tc-load peek <addr-hex> [count]\n"); return 2; }
     uint64_t a = strtoull(argv[2], NULL, 0);
     int n = (argc > 3) ? atoi(argv[3]) : 1;
-    open_target();
+    open_target(1);
     for (int i = 0; i < n; i++) {
         uint32_t v;
         if (rd32_try(a + 4*i, &v)) printf("  0x%08llX: <fault>\n", (unsigned long long)(a + 4*i));
@@ -248,7 +249,7 @@ static int cmd_watch(int argc, char **argv) {
     if (fread(img, 1, sz, f) != (size_t)sz) { perror("read"); return 1; }
     fclose(f);
 
-    open_target();
+    open_target(1);
     mcd_addr_st pc; if (!find_pc(&pc)) die("PC register not found", 0);
     const uint32_t CHUNK = 512;
     for (long off = 0; off < sz; off += CHUNK) {
@@ -269,13 +270,21 @@ static int cmd_watch(int argc, char **argv) {
     return 0;
 }
 
+static int cmd_boot(int argc, char **argv) {
+    (void)argc; (void)argv;
+    open_target(0); /* reset without halt, the boot ROM reads the BMHD and runs flashed code */
+    printf("Booting from flash, the BMHD start address (stad) decides what runs.\n");
+    return 0;
+}
+
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "usage: %s run|flash|peek|watch ...\n", argv[0]); return 2; }
+    if (argc < 2) { fprintf(stderr, "usage: %s run|flash|peek|watch|boot ...\n", argv[0]); return 2; }
     int rc;
     if (!strcmp(argv[1], "run"))        rc = cmd_run(argc, argv);
     else if (!strcmp(argv[1], "flash")) rc = cmd_flash(argc, argv);
     else if (!strcmp(argv[1], "peek"))  rc = cmd_peek(argc, argv);
     else if (!strcmp(argv[1], "watch")) rc = cmd_watch(argc, argv);
+    else if (!strcmp(argv[1], "boot"))  rc = cmd_boot(argc, argv);
     else { fprintf(stderr, "unknown subcommand %s\n", argv[1]); return 2; }
     if (g_core) { mcd_close_core_f(g_core); mcd_exit_f(); }
     return rc;
