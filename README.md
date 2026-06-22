@@ -8,20 +8,22 @@ Maintained by Syuma Labs.
 
 ## Status
 
-Validated on a real TC4D7 over the on-board DAP debugger.
+A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every layer validated on real silicon over the on-board DAP debugger.
 
 - Connect to the chip from Linux via Infineon's TAS server
 - Read and write any memory or peripheral register, with hardware read-back verification
-- Reset and halt the cores
-- Drive GPIO and LEDs by register, see [`tools/led-demo`](tools/led-demo)
+- Reset and halt the cores, drive GPIO and LEDs by register, see [`tools/led-demo`](tools/led-demo)
+- Open-source `tricore-elf-gcc` toolchain (GCC 13.4, binutils 2.40, newlib, GDB, QEMU), see [`toolchain/`](toolchain)
+- Board-support package with startup, newlib stubs, and linker scripts for TC4D7, see [`bsp/`](bsp)
+- Load and run code in RAM or flash and program PFLASH with one tool, see [`tools/tc-load`](tools/tc-load)
+- Full hosted C runtime proven on chip, printf, malloc, and recursion all run
 
 Roadmap.
 
-- Open-source `tricore-elf-gcc` toolchain (GCC, binutils, newlib), see [`toolchain/`](toolchain)
-- Board-support package with linker scripts and startup for TC4D7, see [`bsp/`](bsp)
-- Load and run code from RAM, validated on silicon via MCD run-control
-- Flash programming of PFLASH
-- GDB run-control bridge
+- Real UART so printf goes out the serial port
+- Boot from reset via the boot mode header
+- GDB run-control bridge for source-level debugging
+- More peripheral drivers, timer, ADC, and SPI
 
 ## Layout
 
@@ -31,6 +33,7 @@ open-tricore/
   scripts/       host setup automation (udev, FTDI, launch tas_server)
   tools/         our original Apache-2.0 tools
     led-demo/    GPIO and LED control with register read-back verification
+    tc-load/     load and run code in RAM or flash, and program PFLASH, over MCD
   bsp/tc4d7/     linker scripts and startup for the chip (roadmap)
   toolchain/     build scripts for the open-source tricore-elf-gcc (roadmap)
   third_party/   upstream open-source deps as git submodules under their own licenses

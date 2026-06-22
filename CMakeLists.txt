@@ -36,3 +36,4 @@ set_target_properties(tas_client PROPERTIES
 target_link_libraries(tas_client INTERFACE tas_socket)
 
 add_subdirectory(tools/led-demo)
+add_subdirectory(tools/tc-load)
