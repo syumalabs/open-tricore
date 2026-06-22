@@ -4,10 +4,10 @@
  * the same backend as tc-load. With this, a TriCore GDB can connect to real
  * silicon for source-level inspection, registers, and memory.
  *
- * Phase 3 scope, connect to a halted target and inspect it. Register and memory
- * read and write, the handshake, and a single thread. Execution control and
- * breakpoints come in later phases, continue and step currently report the
- * target as stopped without running it.
+ * Supports connecting to the target, register and memory read and write,
+ * disassembly via ELF symbols, single step, continue, and asynchronous stop
+ * (Ctrl-C). One thread. Breakpoints (Z and z) are not implemented yet, GDB
+ * falls back to software breakpoints, which work for RAM loaded code.
  *
  * Usage, tc-gdbserver [port], default port 3333. Point GDB at it with
  *   tricore-elf-gdb your.elf -ex 'target remote :3333'
@@ -26,6 +26,7 @@
 #include <strings.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <sys/select.h>
 
 #define NREG  44          /* TRICORE_NUM_REGS, d0-d15 a0-a15 lcx fcx pcx psw pc icr isp btv biv syscon pcon0 dcon0 */
 #define BUFSZ 0x4000
@@ -98,6 +99,47 @@ static void build_regmap(void) {
     }
 }
 
+/* --- execution control --- */
+
+/* Is there a byte waiting on the socket, without blocking? */
+static int sock_has_byte(int fd) {
+    fd_set r; FD_ZERO(&r); FD_SET(fd, &r);
+    struct timeval tv = { 0, 0 };
+    return select(fd + 1, &r, NULL, NULL, &tv) > 0 && FD_ISSET(fd, &r);
+}
+
+/* Wait for the core to halt, honouring an out of band Ctrl-C (0x03) from GDB by
+   stopping the core. Then send the stop reply. SIGTRAP (05) covers a completed
+   step and an interrupt, breakpoints will refine the reason in a later phase. */
+static void wait_and_report(int fd) {
+    for (;;) {
+        mcd_core_state_st st; memset(&st, 0, sizeof(st));
+        if (mcd_qry_state_f(g_core, &st)) break;
+        if (st.state != MCD_CORE_STATE_RUNNING) break;
+        if (sock_has_byte(fd)) {
+            unsigned char c;
+            if (read(fd, &c, 1) == 1 && c == 0x03) mcd_stop_f(g_core, 1);
+        }
+        usleep(2000);
+    }
+    rsp_put_str(fd, "S05");
+}
+
+static void do_continue(int fd) {
+    if (mcd_run_f(g_core, 0)) { rsp_put_str(fd, "E01"); return; }
+    wait_and_report(fd);
+}
+static void do_step(int fd) {
+    if (mcd_step_f(g_core, 0, MCD_CORE_STEP_TYPE_INSTR, 1)) { rsp_put_str(fd, "E01"); return; }
+    wait_and_report(fd);
+}
+
+/* Breakpoints, Z and z packets, are not implemented yet. The MCD instruction
+   pointer trigger path (mcd_create_trig_f with MCD_TRIG_TYPE_IP) creates and
+   activates without error but does not halt the core, still under investigation.
+   Z and z fall through to an empty reply, so GDB uses software breakpoints,
+   which work for RAM loaded code. */
+
 /* --- packet handlers --- */
 
 static void handle_q(int fd, const char *p) {
@@ -111,8 +153,15 @@ static void handle_q(int fd, const char *p) {
 }
 
 static void handle_v(int fd, const char *p) {
-    if (!strcmp(p, "vMustReplyEmpty")) rsp_put_str(fd, "");
-    else                               rsp_put_str(fd, ""); /* vCont? empty, GDB falls back to c and s */
+    if (!strcmp(p, "vMustReplyEmpty"))    rsp_put_str(fd, "");
+    else if (!strcmp(p, "vCont?"))        rsp_put_str(fd, "vCont;c;C;s;S");
+    else if (!strncmp(p, "vCont;", 6)) {
+        char a = p[6];                    /* action letter, single thread so no per-thread parsing */
+        if (a == 's' || a == 'S')      do_step(fd);
+        else if (a == 'c' || a == 'C') do_continue(fd);
+        else                           rsp_put_str(fd, "");
+    }
+    else rsp_put_str(fd, "");
 }
 
 static void handle_g(int fd) {
@@ -196,7 +245,8 @@ static void serve(int fd) {
             case 'v': handle_v(fd, buf); break;
             case 'H': rsp_put_str(fd, "OK"); break;
             case 'T': rsp_put_str(fd, "OK"); break;   /* thread alive */
-            case 'c': case 's': rsp_put_str(fd, "S05"); break; /* execution not yet implemented */
+            case 'c': do_continue(fd); break;
+            case 's': do_step(fd); break;
             case 'D': rsp_put_str(fd, "OK"); return;  /* detach */
             case 'k': return;                          /* kill */
             default:  rsp_put_str(fd, ""); break;
