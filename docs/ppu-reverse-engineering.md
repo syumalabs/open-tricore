@@ -9,9 +9,12 @@ MetaWare toolkit is the official way to program it.
 These notes are the result of clean-room reverse engineering on our own
 hardware, an AURIX TC4D7 Lite Kit, observed entirely through the on-board DAP
 debugger over MCD. Every address and sequence here was confirmed by reading and
-writing the live silicon, nothing is taken from restricted documentation. They
-are incomplete, getting our own code to execute on the scalar core is still
-open, see the last section.
+writing the live silicon, nothing is taken from restricted documentation.
+
+**Update, the scalar core now runs our own code.** We can load ARC code, start
+the core, and watch it execute a real computation correctly. See the breakthrough
+section at the end. The middle sections record the journey and the dead ends, the
+recipe is at the bottom.
 
 All register and memory access below is from the TriCore side over the debugger.
 
@@ -219,10 +222,62 @@ memory (its own ICCM, or a cached private view of `0x92080000`) that we cannot
 write or observe from the TriCore side. That is the wall, proven rather than
 inferred.
 
-The practical unblock is the Synopsys MetaWare toolkit for AURIX (its linker or
-TCF carries the exact CSM and reset addresses) or the restricted PPU chapter.
-Everything else, control plane, memory map, ECC behavior, the STU loader, the
-debug port and OCDS suspend, is solved and recorded above.
+That earlier conclusion was wrong, and the reason it was wrong is instructive,
+see the breakthrough below.
+
+## Breakthrough, running our code on the scalar core
+
+The wall above was a measurement error, not a hardware limit. Every prior attempt
+detected execution by having the loaded code do a memory store and then reading
+that store back. The scalar core's data accesses go to its own private memory
+(DCCM), which has no TriCore visible alias, so the stores were invisible even
+though the core was very likely executing the whole time. The fix was to detect
+execution a different way.
+
+The key idea, use the run state as a view independent output. The ARC `sleep`
+instruction puts the core into the sleep state, visible in `PPU_STAT` RUN bits
+(`0x...c1`), with no memory access required. Place a `sleep` at the entry, run,
+and read `STAT`. If it sleeps, the core executed our code.
+
+Two more facts were needed, both found by sweeping writable memory and watching
+`STAT`:
+
+- The reset is ARCv2 address vectored. The vector table entry 0 must hold the
+  ADDRESS of the entry handler, the core reads that word and jumps. Placing
+  instructions directly at the base does not work, only the address vector form.
+- The scalar core fetches from CSM and LMU, not from the vector memory. Loading
+  into VMEM/VCCM (`0xC0000000`, `0xD0000000`) never executes, those are vector
+  data memory. CSM (`0x92080000` or non cached `0xB2080000`) and LMU
+  (`0x90000000` cached, `0xB0000000` non cached) all execute.
+
+Working recipe (verified on silicon):
+
+1. `PPU_CLC = 0`, enable the clock.
+2. Build an ARC image whose first words are a vector table, entry 0 = the address
+   of the entry point, then the code. Link it at the load base.
+3. Load the image into a fetchable memory. Non cached LMU `0xB0000000` is the
+   easiest, the debugger can write it directly. CSM works too, write it directly
+   now that it is ECC initialized, or stream it with the STU.
+4. `PPU_VECBASE = load base`. The strap default is `0x92080000` (CSM).
+5. Kernel reset, `RST_CTRLA = 1`, `RST_CTRLB = 1`, wait `RST_STAT.KRST == 2`,
+   then `RST_CTRLB.STATCLR = 1`.
+6. `PPU_CTRL = 0x3f09`, run.
+7. Observe `PPU_STAT` RUN bits, 0 running, 1 sleeping, 2 halted.
+
+Proof it is real computation, not just reaching a `sleep`. We ran a loop that
+sums 1 through 10 in registers, compares the result, and sleeps only on a match.
+With the compare value 55 (the correct sum) the core sleeps. With the compare
+value 99 it keeps running. So the core executed the loop, the adds, the compare,
+and the conditional branch, and produced the right answer. That is our own code
+running on the ARC EV71 scalar core.
+
+What is still open. Getting data back out to the TriCore through shared memory
+needs the ARC side address of CSM for data accesses (its data view differs from
+its fetch view, and plain stores land in private DCCM). The run state channel
+(sleep, halt, run, and timing) is enough to prove execution and to build simple
+result reporting, richer shared memory output is the next step. The OCDS owned
+debug port and the NDA memory map remain the only way to read the ARC PC and the
+private data map directly.
 
 ## Tooling
 
