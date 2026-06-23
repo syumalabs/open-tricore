@@ -3,6 +3,16 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
+## Unreleased
+
+- BSP ADC driver (`adc.c`/`adc.h`), brings up time-multiplexed ADC module 0, runs
+  the mandatory start-up calibration, and does blocking 12-bit conversions with
+  `adc_read_channel` and `adc_read_monitor`, self-tested on real silicon against
+  the internal monitor channels (VSSM reads about 0, a core supply reads a large
+  value) so it needs no external wiring, with `adc_demo.c`
+- BSP `clock_enable_adc` enables the ADC kernel clock fADC from the peripheral
+  PLL, the ADC converter does not run without it
+
 ## v1.3
 
 A QSPI (SPI) master and peripheral PLL bring-up, validated on real silicon.

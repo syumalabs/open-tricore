@@ -77,6 +77,17 @@ for the full build, flash, and debug flow.
   Note: the QSPI clock divider must be non-zero; a divider of 0 switches the
   shift-engine clock off entirely.
 
+## ADC
+
+- `adc.c` / `adc.h` are a minimal time-multiplexed ADC (TMADC) driver. `adc_init`
+  enables the converter, runs the mandatory start-up calibration, and enters RUN
+  state, returning 0 once calibrated. `adc_read_channel` converts an input channel
+  to a 12-bit code, and `adc_read_monitor` samples an internal signal (a supply or
+  ground). The converter runs on the PLL clock, so call `clock_init_pll` and
+  `clock_enable_adc` first. The internal monitor channels give a wiring-free
+  self-test: VSSM (ground) reads about 0 and VDDK1 (a core supply) reads a large
+  value, which is what `adc_demo` checks.
+
 ## Linker scripts
 
 - `ram.ld`, `hosted.ld` place code in PSRAM0 at `0x70100000` and data in DSPR0 at
@@ -102,6 +113,9 @@ for the full build, flash, and debug flow.
   `tc_delay_ms`, showing the STM timing helper.
 - `spi_demo.c` brings up the PLL, enables QSPI internal loopback, and exchanges a
   set of bytes, publishing the round-trip count to the heartbeat (6 = all good).
+- `adc_demo.c` brings up the PLL and ADC and self-tests against the internal
+  monitor channels, publishing `0xADC0` to the heartbeat when ground reads about 0
+  and a supply reads a large value.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.

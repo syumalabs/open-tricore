@@ -25,6 +25,11 @@
    call once at startup before configuring PLL-clocked peripherals. */
 int clock_init_pll(void);
 
+/* Enable the ADC kernel clock fADC from the peripheral PLL (PERCCUCON1.ADCPERON).
+   Without this fADC is off and the ADC shift logic never runs. Call after
+   clock_init_pll(). */
+void clock_enable_adc(void);
+
 /* Select the peripheral PLL as the QSPI kernel clock (fQSPI) with divider divsel.
    divsel is the PERCCUCON0.QSPIDIV field: 1 divides by 1, up to 15. IMPORTANT:
    divsel 0 switches fQSPI OFF entirely, so always pass at least 1. Call after

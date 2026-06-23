@@ -24,10 +24,11 @@ A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every l
 - STM-based timing in the BSP, microsecond and millisecond busy-wait delays and a monotonic time source, see [`bsp/tc4d7`](bsp/tc4d7)
 - A QSPI (SPI) master in the BSP, an 8-bit mode-0 master with blocking full-duplex transfers, verified on chip over the QSPI's internal loopback with no wiring, see [`bsp/tc4d7`](bsp/tc4d7)
 - Peripheral PLL bring-up in the BSP, from a bare reset with no Infineon startup software, which the QSPI shift engine and other PLL-clocked peripherals need, see [`bsp/tc4d7`](bsp/tc4d7)
+- An ADC (TMADC) driver in the BSP, a 12-bit converter with start-up calibration and blocking conversions, self-tested on chip against the internal monitor channels with no external wiring, see [`bsp/tc4d7`](bsp/tc4d7)
 
 Roadmap.
 
-- More peripheral drivers, a timer or PWM API, and ADC
+- More peripheral drivers and a timer or PWM API
 - The PPU vector DSP, the scalar core is up (see above), the wide vector unit needs a vector toolchain, and a faster shared-memory result path
 
 ## Layout
