@@ -3,7 +3,10 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v1.9
+
+Multicore reaches all six cores, every TriCore core runs our C with a full
+runtime, validated on real silicon.
 
 - BSP secondary-core C runtime, `core_start_c` starts a secondary TriCore core
   with its own stack and context save area (built like `crt0` does for CPU0) and
