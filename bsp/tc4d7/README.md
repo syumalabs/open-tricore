@@ -46,6 +46,15 @@ for the full build, flash, and debug flow.
   `gpio_write`, and `gpio_toggle` drive an output through the atomic OMR, and
   `gpio_read` returns the pin level from IN.
 
+## Timing
+
+- `timing.c` / `timing.h` are busy-wait delays and a monotonic time source over
+  the free-running STM, no interrupts. `tc_delay_ticks` counts raw STM cycles and
+  is exact, `tc_delay_us` and `tc_delay_ms` convert through `STM_HZ`, and
+  `tc_micros` / `tc_millis` report time since the counter started. `STM_HZ` is the
+  measured ~50.3 MHz STM clock (the ~100.7 MHz backup clock halved), override it
+  if your clock setup differs. The 32-bit counter wraps about every 85 seconds.
+
 ## Linker scripts
 
 - `ram.ld`, `hosted.ld` place code in PSRAM0 at `0x70100000` and data in DSPR0 at
@@ -67,6 +76,8 @@ for the full build, flash, and debug flow.
 - `timer_demo.c` enables the periodic timer tick and publishes `g_ticks` to the
   heartbeat, so the moving count over the debugger shows interrupts running.
 - `gpio_demo.c` blinks LED1 (P03.9) through the GPIO API and reads the pin back.
+- `timing_demo.c` publishes `tc_millis` to the heartbeat and paces the loop with
+  `tc_delay_ms`, showing the STM timing helper.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.

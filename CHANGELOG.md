@@ -7,6 +7,9 @@ the on-board DAP debugger.
 
 - BSP GPIO API (`gpio.c`/`gpio.h`), per-pin direction and mode, atomic set, clear,
   write, toggle, and read, with `gpio_demo.c`
+- BSP timing helper (`timing.c`/`timing.h`), STM-based busy-wait delays
+  (`tc_delay_us`/`tc_delay_ms`/`tc_delay_ticks`) and a time source
+  (`tc_micros`/`tc_millis`), with `timing_demo.c`
 - BSP interrupts and a periodic timer tick, an interrupt vector table (`ivt.S`)
   and `timer_tick_init` (`irq.c`) driving an STM compare interrupt on CPU0, with
   `timer_demo.c`

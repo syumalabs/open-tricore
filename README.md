@@ -21,6 +21,7 @@ A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every l
 - Our own code runs on the PPU scalar core (Synopsys ARC EV71), a clean-room first, load and start ARC code, feed it input through LMU, and read an arbitrary-width result back, see [`ppu/`](ppu) and [`tools/tc-ppu`](tools/tc-ppu)
 - Interrupts and a periodic timer tick in the BSP, an interrupt vector table and an STM compare interrupt on CPU0, see [`bsp/tc4d7`](bsp/tc4d7)
 - A GPIO API in the BSP, per-pin direction and mode, atomic set, clear, write, toggle, and read, see [`bsp/tc4d7`](bsp/tc4d7)
+- STM-based timing in the BSP, microsecond and millisecond busy-wait delays and a monotonic time source, see [`bsp/tc4d7`](bsp/tc4d7)
 
 Roadmap.
 
