@@ -5,6 +5,9 @@ the on-board DAP debugger.
 
 ## Unreleased
 
+- `tc-gdbserver` data watchpoints, GDB `watch`, `rwatch`, and `awatch` map to MCD
+  write, read, and read-write triggers
+
 - BSP GPIO API (`gpio.c`/`gpio.h`), per-pin direction and mode, atomic set, clear,
   write, toggle, and read, with `gpio_demo.c`
 - BSP timing helper (`timing.c`/`timing.h`), STM-based busy-wait delays

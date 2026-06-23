@@ -139,31 +139,49 @@ static void do_step(int fd) {
 /* --- breakpoints, MCD instruction-pointer triggers --- */
 
 #define MAX_BP 16
-static struct { uint64_t addr; uint32_t trig_id; int used; } g_bp[MAX_BP];
+/* One hardware trigger. gtype is the GDB Z kind, 0/1 breakpoint, 2 write, 3 read,
+   4 access watchpoint, so a breakpoint and a watchpoint can share an address. */
+static struct { uint64_t addr; int gtype; uint32_t trig_id; int used; } g_bp[MAX_BP];
 
-/* Insert a hardware breakpoint at addr. Both GDB software (Z0) and hardware
-   (Z1) breakpoints map here, since target code is usually in flash where a
-   software trap cannot be written. Returns 0 on success, -1 on failure. */
-static int bp_set(uint64_t addr) {
-    for (int i = 0; i < MAX_BP; i++) if (g_bp[i].used && g_bp[i].addr == addr) return 0;
+/* Map a GDB Z kind to an MCD trigger type. Returns 0 for an unsupported kind. */
+static mcd_trig_type_et trig_type_of(int gtype) {
+    switch (gtype) {
+    case 0: case 1: return MCD_TRIG_TYPE_IP;     /* breakpoint, IP compare */
+    case 2:         return MCD_TRIG_TYPE_WRITE;  /* write watchpoint */
+    case 3:         return MCD_TRIG_TYPE_READ;   /* read watchpoint */
+    case 4:         return MCD_TRIG_TYPE_RW;     /* access watchpoint */
+    default:        return 0;
+    }
+}
+
+/* Insert a hardware trigger. Breakpoints (Z0/Z1) use an IP compare, since target
+   code is usually in flash where a software trap cannot be written. Watchpoints
+   (Z2/Z3/Z4) use a data-access compare over [addr, addr+len). range is len-1.
+   Returns 0 on success, -1 on failure. */
+static int trig_set(uint64_t addr, int gtype, uint32_t range) {
+    mcd_trig_type_et mt = trig_type_of(gtype);
+    if (!mt) return -1;
+    for (int i = 0; i < MAX_BP; i++)
+        if (g_bp[i].used && g_bp[i].addr == addr && g_bp[i].gtype == gtype) return 0;
     mcd_trig_simple_core_st t; memset(&t, 0, sizeof(t));
     t.struct_size = sizeof(t);
-    t.type        = MCD_TRIG_TYPE_IP;
+    t.type        = mt;
     t.option      = MCD_TRIG_OPT_DEFAULT;        /* platform picks, resolves to hardware here */
     t.action      = MCD_TRIG_ACTION_DBG_DEBUG;   /* halt this core into debug mode */
     t.addr_start.address = addr;
     t.addr_start.mem_space_id = g_msid;
-    t.addr_range  = 0;                            /* single address */
+    t.addr_range  = range;                        /* 0 is a single address */
     uint32_t id = 0;
     if (mcd_create_trig_f(g_core, &t, &id)) return -1;
     mcd_activate_trig_set_f(g_core);
-    for (int i = 0; i < MAX_BP; i++) if (!g_bp[i].used) { g_bp[i].addr = addr; g_bp[i].trig_id = id; g_bp[i].used = 1; return 0; }
+    for (int i = 0; i < MAX_BP; i++)
+        if (!g_bp[i].used) { g_bp[i].addr = addr; g_bp[i].gtype = gtype; g_bp[i].trig_id = id; g_bp[i].used = 1; return 0; }
     return -1;                                     /* table full */
 }
 
-static void bp_clear(uint64_t addr) {
+static void trig_clear(uint64_t addr, int gtype) {
     for (int i = 0; i < MAX_BP; i++)
-        if (g_bp[i].used && g_bp[i].addr == addr) {
+        if (g_bp[i].used && g_bp[i].addr == addr && g_bp[i].gtype == gtype) {
             mcd_remove_trig_f(g_core, g_bp[i].trig_id);
             mcd_activate_trig_set_f(g_core);
             g_bp[i].used = 0;
@@ -171,22 +189,27 @@ static void bp_clear(uint64_t addr) {
         }
 }
 
+/* Parse "type,addr[,len]". len defaults to 1 and only applies to watchpoints. */
 static void handle_Z(int fd, const char *p) {
     int type = p[1] - '0';
-    if (type != 0 && type != 1) { rsp_put_str(fd, ""); return; } /* watchpoints not yet supported */
+    if (!trig_type_of(type)) { rsp_put_str(fd, ""); return; }   /* unsupported, GDB falls back */
     const char *comma = strchr(p, ',');
     if (!comma) { rsp_put_str(fd, "E01"); return; }
     uint64_t addr = strtoull(comma + 1, NULL, 16);
-    rsp_put_str(fd, bp_set(addr) ? "E01" : "OK");
+    uint32_t len = 1;
+    const char *comma2 = strchr(comma + 1, ',');
+    if (comma2) { unsigned long v = strtoul(comma2 + 1, NULL, 16); if (v) len = (uint32_t)v; }
+    uint32_t range = (type >= 2 && len > 0) ? len - 1 : 0;
+    rsp_put_str(fd, trig_set(addr, type, range) ? "E01" : "OK");
 }
 
 static void handle_z(int fd, const char *p) {
     int type = p[1] - '0';
-    if (type != 0 && type != 1) { rsp_put_str(fd, ""); return; }
+    if (!trig_type_of(type)) { rsp_put_str(fd, ""); return; }
     const char *comma = strchr(p, ',');
     if (!comma) { rsp_put_str(fd, "E01"); return; }
     uint64_t addr = strtoull(comma + 1, NULL, 16);
-    bp_clear(addr);
+    trig_clear(addr, type);
     rsp_put_str(fd, "OK");
 }
 

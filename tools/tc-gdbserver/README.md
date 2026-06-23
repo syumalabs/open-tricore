@@ -22,9 +22,13 @@ Then debug as usual.
 ```
 
 Supports register and memory read and write, disassembly via ELF symbols, single
-step, continue, asynchronous stop (Ctrl-C), hardware breakpoints via MCD
-instruction-pointer triggers, and GDB `load` to flash over vFlash. One thread,
+step, continue, asynchronous stop (Ctrl-C), hardware breakpoints and data
+watchpoints via MCD triggers, and GDB `load` to flash over vFlash. One thread,
 CPU0.
+
+Watchpoints map GDB `watch` (write), `rwatch` (read), and `awatch` (access) to
+MCD write, read, and read-write data triggers, so `watch g_var` halts the core
+when the location is accessed.
 
 A breakpoint on a function the compiler inlined at `-O2` will not hit, its symbol
 address is never executed. Set it on a called function or a source line.
