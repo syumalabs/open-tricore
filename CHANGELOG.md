@@ -3,6 +3,15 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
+## Unreleased
+
+- PPU data-out generalized to result vectors, `tc-ppu call --out N` streams back
+  N result words
+- `ppu_call` host helper in `tools/common/ppu.{c,h}`, a reusable layer over tcmcd
+  that loads an ARC image, feeds inputs through LMU, and reads a result vector
+- `ppu/rt.inc` shared runtime, examples just provide `compute`
+- `ppu/checksum.s`, sums a host-provided buffer, exercises the input channel
+
 ## v1.1
 
 - PPU bring-up by clean-room reverse engineering, our own code runs on the PPU

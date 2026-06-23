@@ -23,3 +23,7 @@ target_include_directories(tcmcd PUBLIC "${DAS_DIR}/include" "${CMAKE_CURRENT_SO
 target_link_libraries(tcmcd PUBLIC "${DAS_DIR}/lib/libmcdxdas.so")
 # Export the lib dir so executables can set their rpath to find libmcdxdas.so.
 set(TC_DAS_LIBDIR "${DAS_DIR}/lib" CACHE INTERNAL "DAS library directory")
+
+# ppu, host-side PPU helper layered on tcmcd. Used by tc-ppu.
+add_library(ppu STATIC ppu.c)
+target_link_libraries(ppu PUBLIC tcmcd)
