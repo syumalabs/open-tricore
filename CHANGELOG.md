@@ -3,7 +3,9 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v1.3
+
+A QSPI (SPI) master and peripheral PLL bring-up, validated on real silicon.
 
 - BSP QSPI (SPI) master (`spi.c`/`spi.h`), an 8-bit mode-0 master on channel 0
   with blocking full-duplex `spi_transfer`, validated on real silicon over the
