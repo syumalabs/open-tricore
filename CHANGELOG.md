@@ -3,7 +3,10 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v1.7
+
+PPU fast shared-memory output, the scalar core returns result vectors through the
+shared LMU at full bandwidth, validated on real silicon.
 
 - PPU fast shared-memory output, the scalar core now returns results straight
   through the shared LMU at full bandwidth instead of only the bit-serial
