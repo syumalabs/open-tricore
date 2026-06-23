@@ -23,8 +23,13 @@ Then debug as usual.
 
 Supports register and memory read and write, disassembly via ELF symbols, single
 step, continue, asynchronous stop (Ctrl-C), hardware breakpoints and data
-watchpoints via MCD triggers, and GDB `load` to flash over vFlash. One thread,
-CPU0.
+watchpoints via MCD triggers, GDB `load` to flash over vFlash, and the TriCore
+cores exposed as GDB threads.
+
+The seven TriCore cores appear as GDB threads, so `info threads` lists them and
+`thread N` switches which core's registers and memory you inspect. Each core has
+its own register map, so the views are independent. Run-control acts on the
+selected core, the stop reply names the thread that stopped.
 
 Watchpoints map GDB `watch` (write), `rwatch` (read), and `awatch` (access) to
 MCD write, read, and read-write data triggers, so `watch g_var` halts the core

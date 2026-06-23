@@ -5,6 +5,9 @@ the on-board DAP debugger.
 
 ## Unreleased
 
+- `tc-gdbserver` exposes the seven TriCore cores as GDB threads, `info threads`
+  and `thread N` switch which core's registers and memory you inspect, each with
+  its own register map, and the stop reply names the thread that stopped
 - `tc-gdbserver` data watchpoints, GDB `watch`, `rwatch`, and `awatch` map to MCD
   write, read, and read-write triggers
 

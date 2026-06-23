@@ -61,8 +61,20 @@ static void gdb_reg_name(int idx, char *out, size_t n) {
 }
 
 /* Map GDB register numbers to MCD register addresses. */
+/* The TriCore cores exposed as GDB threads, filled by open_all_cores. */
+#define NCORE 8
+static const mcd_core_st *g_cores[NCORE];
+static uint32_t g_cmsid[NCORE];
+static int g_ncore = 1;
+static int g_cur = 0;
+
+/* Active register map, copied from the selected core by select_thread. */
 static mcd_addr_st g_rega[NREG];
 static int         g_regok[NREG];
+/* Per-core register maps. The cores are identical TriCore 1.8, but each has its
+   own register addresses (a per-core memory space), so they must be kept apart. */
+static mcd_addr_st g_rega_all[NCORE][NREG];
+static int         g_regok_all[NCORE][NREG];
 
 /* Does an MCD register name correspond to GDB register index idx? Case
    insensitive, with the few aliases where the spellings differ. */
@@ -79,24 +91,27 @@ static int reg_name_match(const char *mcd, int idx) {
     return 0;
 }
 
-static void build_regmap(void) {
-    uint32_t ngrp = 0; mcd_qry_reg_groups_f(g_core, 0, &ngrp, NULL);
+/* Build the register map for one core into its per-core slot. */
+static void build_regmap(int cidx) {
+    const mcd_core_st *core = g_cores[cidx];
+    mcd_addr_st *rega = g_rega_all[cidx];
+    int *regok = g_regok_all[cidx];
+    uint32_t ngrp = 0; mcd_qry_reg_groups_f(core, 0, &ngrp, NULL);
     for (uint32_t grp = 0; grp < ngrp; grp++) {
-        uint32_t nr = 0; mcd_qry_reg_map_f(g_core, grp, 0, &nr, NULL);
+        uint32_t nr = 0; mcd_qry_reg_map_f(core, grp, 0, &nr, NULL);
         mcd_register_info_st *ri = calloc(nr, sizeof(*ri));
-        mcd_qry_reg_map_f(g_core, grp, 0, &nr, ri);
-        for (uint32_t i = 0; i < nr; i++) {
-            if (getenv("TC_GDB_DUMPREGS")) fprintf(stderr, "  mcd reg: %s\n", ri[i].regname);
+        mcd_qry_reg_map_f(core, grp, 0, &nr, ri);
+        for (uint32_t i = 0; i < nr; i++)
             for (int idx = 0; idx < NREG; idx++)
-                if (!g_regok[idx] && reg_name_match(ri[i].regname, idx)) { g_rega[idx] = ri[i].addr; g_regok[idx] = 1; }
-        }
+                if (!regok[idx] && reg_name_match(ri[i].regname, idx)) { rega[idx] = ri[i].addr; regok[idx] = 1; }
         free(ri);
     }
+    if (cidx != 0) return;   /* report missing registers once, for core 0 */
     int missing = 0;
-    for (int i = 0; i < NREG; i++) if (!g_regok[i]) missing++;
+    for (int i = 0; i < NREG; i++) if (!regok[i]) missing++;
     if (missing) {
         fprintf(stderr, "tc-gdbserver, %d registers not exposed by MCD, shown as unavailable:", missing);
-        for (int i = 0; i < NREG; i++) if (!g_regok[i]) { char nm[8]; gdb_reg_name(i, nm, sizeof(nm)); fprintf(stderr, " %s", nm); }
+        for (int i = 0; i < NREG; i++) if (!regok[i]) { char nm[8]; gdb_reg_name(i, nm, sizeof(nm)); fprintf(stderr, " %s", nm); }
         fprintf(stderr, "\n");
     }
 }
@@ -109,6 +124,41 @@ static int sock_has_byte(int fd) {
     struct timeval tv = { 0, 0 };
     return select(fd + 1, &r, NULL, NULL, &tv) > 0 && FD_ISSET(fd, &r);
 }
+
+/* Open the cores beyond core 0 (open_target already opened core 0) and record
+   their handles and memory space ids. Selecting a thread later points the tcmcd
+   globals g_core and g_msid, and the active register map, at the chosen core. */
+static void open_all_cores(void) {
+    g_cores[0] = g_core; g_cmsid[0] = g_msid;
+    mcd_core_con_info_st sys, dev; uint32_t n = 1;
+    if (mcd_qry_systems_f(0, &n, &sys) || !n) return;
+    n = 1; if (mcd_qry_devices_f(&sys, 0, &n, &dev) || !n) return;
+    uint32_t nc = 0; mcd_qry_cores_f(&dev, 0, &nc, NULL);
+    mcd_core_con_info_st *cc = calloc(nc ? nc : 1, sizeof(*cc));
+    if (mcd_qry_cores_f(&dev, 0, &nc, cc) == 0) {
+        for (uint32_t i = 1; i < nc && i < NCORE; i++) {
+            mcd_core_st *c = NULL;
+            if (mcd_open_core_f(&cc[i], &c)) break;
+            uint32_t nms = 0; mcd_qry_mem_spaces_f(c, 0, &nms, NULL);
+            mcd_memspace_st *ms = calloc(nms ? nms : 1, sizeof(*ms));
+            mcd_qry_mem_spaces_f(c, 0, &nms, ms);
+            g_cores[i] = c; g_cmsid[i] = nms ? ms[0].mem_space_id : g_msid;
+            free(ms);
+            g_ncore = (int)i + 1;
+        }
+    }
+    free(cc);
+}
+
+static void select_thread(int idx) {
+    if (idx < 0 || idx >= g_ncore) return;
+    g_cur = idx; g_core = g_cores[idx]; g_msid = g_cmsid[idx];
+    memcpy(g_rega, g_rega_all[idx], sizeof(g_rega));
+    memcpy(g_regok, g_regok_all[idx], sizeof(g_regok));
+}
+
+/* Stop reply naming the current thread, so GDB tracks which core stopped. */
+static void report_stop(int fd) { char b[24]; snprintf(b, sizeof(b), "T05thread:%x;", g_cur + 1); rsp_put_str(fd, b); }
 
 /* Wait for the core to halt, honouring an out of band Ctrl-C (0x03) from GDB by
    stopping the core. Then send the stop reply. SIGTRAP (05) covers a completed
@@ -124,7 +174,7 @@ static void wait_and_report(int fd) {
         }
         usleep(2000);
     }
-    rsp_put_str(fd, "S05");
+    report_stop(fd);
 }
 
 static void do_continue(int fd) {
@@ -289,8 +339,8 @@ static void handle_q(int fd, const char *p) {
     if (!strncmp(p, "qSupported", 10))      rsp_put_str(fd, "PacketSize=1000;qXfer:memory-map:read+");
     else if (!strncmp(p, "qXfer:memory-map:read:", 22)) { const char *a = strrchr(p, ':'); qxfer_reply(fd, MEMMAP, a ? a + 1 : ""); }
     else if (!strcmp(p, "qAttached"))       rsp_put_str(fd, "1");
-    else if (!strcmp(p, "qC"))              rsp_put_str(fd, "QC1");
-    else if (!strcmp(p, "qfThreadInfo"))    rsp_put_str(fd, "m1");
+    else if (!strcmp(p, "qC"))              { char b[16]; snprintf(b, sizeof(b), "QC%x", g_cur + 1); rsp_put_str(fd, b); }
+    else if (!strcmp(p, "qfThreadInfo"))    { char b[64]; int o = 0; for (int i = 0; i < g_ncore; i++) o += snprintf(b + o, sizeof(b) - o, "%s%x", i ? "," : "m", i + 1); rsp_put_str(fd, b); }
     else if (!strcmp(p, "qsThreadInfo"))    rsp_put_str(fd, "l");
     else if (!strncmp(p, "qSymbol", 7))     rsp_put_str(fd, "OK");
     else                                    rsp_put_str(fd, "");
@@ -384,9 +434,9 @@ static void serve(int fd) {
     for (;;) {
         int n = rsp_get_packet(fd, buf, sizeof(buf));
         if (n == -1) { printf("GDB disconnected\n"); return; }
-        if (n == -2) { rsp_put_str(fd, "S05"); continue; } /* interrupt, already halted */
+        if (n == -2) { report_stop(fd); continue; } /* interrupt, already halted */
         switch (buf[0]) {
-            case '?': rsp_put_str(fd, "S05"); break;
+            case '?': report_stop(fd); break;
             case 'g': handle_g(fd); break;
             case 'G': handle_G(fd, buf + 1); break;
             case 'p': handle_p(fd, buf); break;
@@ -397,7 +447,7 @@ static void serve(int fd) {
             case 'v': handle_v(fd, buf, n); break;
             case 'Z': handle_Z(fd, buf); break;
             case 'z': handle_z(fd, buf); break;
-            case 'H': rsp_put_str(fd, "OK"); break;
+            case 'H': { long id = strtol(buf + 2, NULL, 16); if (id > 0) select_thread((int)id - 1); rsp_put_str(fd, "OK"); } break;
             case 'T': rsp_put_str(fd, "OK"); break;   /* thread alive */
             case 'c': do_continue(fd); break;
             case 's': do_step(fd); break;
@@ -412,7 +462,10 @@ int main(int argc, char **argv) {
     int port = (argc > 1) ? atoi(argv[1]) : 3333;
 
     open_target(1); /* reset and halt, target ready for inspection */
-    build_regmap();
+    open_all_cores();
+    for (int i = 0; i < g_ncore; i++) build_regmap(i);
+    select_thread(0);
+    printf("tc-gdbserver, %d cores exposed as GDB threads.\n", g_ncore);
 
     int lfd = rsp_listen(port);
     if (lfd < 0) { perror("listen"); tcmcd_close(); return 1; }
