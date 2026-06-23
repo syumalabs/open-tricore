@@ -37,6 +37,15 @@ for the full build, flash, and debug flow.
 - The system timer lives in the CPU module (`STM` at `0xF88000xx`), and its
   compare 0 drives service node `STMCPU0 SR2`, both verified on silicon.
 
+## GPIO
+
+- `gpio.c` / `gpio.h` are a small port API. A port is its module base
+  (`GPIO_P03` and friends), pins are 0..15. `gpio_output` and `gpio_input` set the
+  per-pin direction through DRVCFG, `gpio_mode` takes a raw DRVCFG for alternate
+  functions (DIR bit0, OD bit1, MODE bits[7:4]). `gpio_set`, `gpio_clear`,
+  `gpio_write`, and `gpio_toggle` drive an output through the atomic OMR, and
+  `gpio_read` returns the pin level from IN.
+
 ## Linker scripts
 
 - `ram.ld`, `hosted.ld` place code in PSRAM0 at `0x70100000` and data in DSPR0 at
@@ -57,6 +66,7 @@ for the full build, flash, and debug flow.
 - `uart_hello.c` is a minimal UART transmit demo with no libc.
 - `timer_demo.c` enables the periodic timer tick and publishes `g_ticks` to the
   heartbeat, so the moving count over the debugger shows interrupts running.
+- `gpio_demo.c` blinks LED1 (P03.9) through the GPIO API and reads the pin back.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.
