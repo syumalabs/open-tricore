@@ -3,7 +3,9 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v1.4
+
+An ADC (TMADC) driver with start-up calibration, validated on real silicon.
 
 - BSP ADC driver (`adc.c`/`adc.h`), brings up time-multiplexed ADC module 0, runs
   the mandatory start-up calibration, and does blocking 12-bit conversions with
