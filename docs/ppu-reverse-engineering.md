@@ -345,6 +345,20 @@ own writes to the LMU APU config do not commit.
 One ISA note from this work, the multi bit `asl rA, rB, n` form faults the EV71
 scalar core, double with `add rA, rB, rB` instead.
 
+## The scalar core has no SIMD, the vector unit needs MetaWare (confirmed)
+
+The scalar core is plain ARC HS with no DSP or packed SIMD option. Read on
+silicon (an ARC kernel reads its own build registers into the LMU), `IDENTITY`
+ARCVER = `0x54`, `ISA_CONFIG` = `0x23E47402`, and `DSP_BUILD` (aux `0x7a`) = `0`.
+The stock `binutils-arc-linux-gnu` will happily assemble the ARCv2 packed SIMD and
+DSP opcodes (`vadd2h`, `vadd4b`, `vsub2`, `vmac2h`, `dmach`), but every one of
+them faults the core (`PPU_STAT` goes to 0) because the option is absent from this
+build. So all SIMD on the PPU lives in the separate 512-bit EV vector unit, which
+has its own register file and ISA. The GNU assembler has no EV vector target and
+the encodings are MetaWare and NDA gated, so vector kernels are not reachable
+clean room. The scalar core, with input and full bandwidth output through the
+LMU, is the part that is open.
+
 ## Tooling
 
 All experiments were driven from small host programs linking the shared `tcmcd`
