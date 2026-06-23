@@ -21,9 +21,19 @@
 #ifndef SMP_H
 #define SMP_H
 
-/* Start secondary core (1..5) executing at entry. Returns 0 on success, -1 for
-   an invalid core number. Call from CPU0. */
+/* Start secondary core (1..5) executing at entry. The core starts with no stack
+   or context save area, so entry must be a leaf that needs neither. Returns 0 on
+   success, -1 for an invalid core number. Call from CPU0. */
 int core_start(unsigned core, void (*entry)(void));
+
+/* Start secondary core (1..5) with a full C runtime and run entry on it. The
+   core sets up its own stack and context save area in its local data scratchpad
+   (0xD0000000), so entry can be ordinary C: function calls, recursion, and
+   stack locals all work. Globals are shared with CPU0's image; reads work, but
+   writes to CPU0-owned memory are access-protection gated, so use the LMU for
+   data the secondary core must write back. Returns 0 on success, -1 for an
+   invalid core. Call from CPU0. */
+int core_start_c(unsigned core, void (*entry)(void));
 
 /* The index (0..6) of the core running this code, from the CORE_ID register. */
 unsigned core_id(void);

@@ -3,6 +3,16 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
+## Unreleased
+
+- BSP secondary-core C runtime, `core_start_c` starts a secondary TriCore core
+  with its own stack and context save area (built like `crt0` does for CPU0) and
+  runs an ordinary C entry on it, so the second core supports function calls,
+  recursion, and stack locals, not just stack-free leaves. Each core uses its own
+  local data scratchpad for stack and CSA. Validated on real silicon with
+  `smp_c_demo.c`, where CPU1 answers requests by computing Fibonacci numbers
+  recursively and CPU0 checks every answer
+
 ## v1.8
 
 Multicore support, CPU0 starts a second TriCore core and runs code on it,

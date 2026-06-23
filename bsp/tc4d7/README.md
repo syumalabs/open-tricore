@@ -119,8 +119,14 @@ for the full build, flash, and debug flow.
   returns the index of the core executing the call. The secondary core starts
   with no stack and no context save area, so `entry` must be a leaf that makes no
   calls and needs no stack (a polling or compute loop), or set one up itself.
-  Cores share data through the LMU once its access-protection region is opened to
-  all masters, the same grant the DMA driver uses; `smp_demo` does this.
+  `core_start_c(core, entry)` goes further: it gives the secondary core a full C
+  runtime by setting up a stack and context save area in the core's local data
+  scratchpad (the same CSA build `crt0` does for CPU0) before calling `entry`, so
+  `entry` can be ordinary C with function calls and recursion. Cores share data
+  through the LMU once its access-protection region is opened to all masters, the
+  same grant the DMA driver uses; reads of shared globals also work, but a
+  secondary core's writes to CPU0-owned memory are access-protection gated, so
+  publish results through the LMU. `smp_demo` and `smp_c_demo` show both APIs.
 
 ## Linker scripts
 
@@ -158,6 +164,9 @@ for the full build, flash, and debug flow.
 - `smp_demo.c` starts CPU1 on a worker loop and runs an 8-round request and
   response handshake with it through the shared LMU, publishing the number of
   rounds that passed to the heartbeat.
+- `smp_c_demo.c` starts CPU1 with a full C runtime and runs a worker that answers
+  each request by computing a Fibonacci number recursively, proving function
+  calls and stack work on the secondary core, and checks each answer on CPU0.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.
