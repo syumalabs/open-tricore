@@ -3,28 +3,27 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v1.2
 
-- `tc-gdbserver` exposes the seven TriCore cores as GDB threads, `info threads`
-  and `thread N` switch which core's registers and memory you inspect, each with
-  its own register map, and the stop reply names the thread that stopped
-- `tc-gdbserver` data watchpoints, GDB `watch`, `rwatch`, and `awatch` map to MCD
-  write, read, and read-write triggers
+A peripheral HAL, a periodic timer tick, a much stronger debugger, and PPU
+tooling, all validated on real silicon.
 
+- BSP interrupts and a periodic timer tick, an interrupt vector table (`ivt.S`)
+  and `timer_tick_init` (`irq.c`) driving an STM compare interrupt on CPU0, with
+  `timer_demo.c`
 - BSP GPIO API (`gpio.c`/`gpio.h`), per-pin direction and mode, atomic set, clear,
   write, toggle, and read, with `gpio_demo.c`
 - BSP timing helper (`timing.c`/`timing.h`), STM-based busy-wait delays
   (`tc_delay_us`/`tc_delay_ms`/`tc_delay_ticks`) and a time source
   (`tc_micros`/`tc_millis`), with `timing_demo.c`
-- BSP interrupts and a periodic timer tick, an interrupt vector table (`ivt.S`)
-  and `timer_tick_init` (`irq.c`) driving an STM compare interrupt on CPU0, with
-  `timer_demo.c`
-- PPU data-out generalized to result vectors, `tc-ppu call --out N` streams back
-  N result words
-- `ppu_call` host helper in `tools/common/ppu.{c,h}`, a reusable layer over tcmcd
-  that loads an ARC image, feeds inputs through LMU, and reads a result vector
-- `ppu/rt.inc` shared runtime, examples just provide `compute`
-- `ppu/checksum.s`, sums a host-provided buffer, exercises the input channel
+- `tc-gdbserver` exposes the seven TriCore cores as GDB threads, `info threads`
+  and `thread N` switch which core's registers and memory you inspect, each with
+  its own register map, and the stop reply names the thread that stopped
+- `tc-gdbserver` data watchpoints, GDB `watch`, `rwatch`, and `awatch` map to MCD
+  write, read, and read-write triggers
+- PPU result vectors, `tc-ppu call --out N` streams back N result words, with the
+  reusable `ppu_call` host helper (`tools/common/ppu.{c,h}`), the shared
+  `ppu/rt.inc` runtime, and the `ppu/checksum.s` example
 
 ## v1.1
 
