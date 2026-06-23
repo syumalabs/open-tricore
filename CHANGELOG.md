@@ -3,7 +3,10 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v1.8
+
+Multicore support, CPU0 starts a second TriCore core and runs code on it,
+validated on real silicon.
 
 - BSP multicore support (`smp.c`/`smp.h`), `core_start` brings a secondary
   TriCore core out of boot halt and runs an entry function on it (set the core's
