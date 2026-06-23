@@ -206,6 +206,19 @@ The raw JTAG route was also evaluated and is a dead end for this part, public
 OpenOCD has no ARCv3 or EV backend, and the PPU is not a separately scannable
 JTAG TAP, it sits behind the chip level Cerberus or MCD fabric.
 
+A conclusive diagnostic settles it. `VECBASE` has a strap default of `0x92080000`
+(the CSM system address) and our writes to it persist across the kernel reset, so
+the register works and the silicon's intended reset location is CSM at
+`0x92080000`. We placed a single ARC `sleep` instruction directly at that exact
+address (verified, CSM reads back `0x003f216f`), set `VECBASE = 0x92080000`, and
+ran. If the core fetched and executed that instruction it would enter the sleep
+run state, observable in `STAT` without needing any store. It does not, `STAT`
+goes from halt to run and stays running. So the scalar core's instruction fetch
+does not come from the system CSM we can write, it fetches a physically different
+memory (its own ICCM, or a cached private view of `0x92080000`) that we cannot
+write or observe from the TriCore side. That is the wall, proven rather than
+inferred.
+
 The practical unblock is the Synopsys MetaWare toolkit for AURIX (its linker or
 TCF carries the exact CSM and reset addresses) or the restricted PPU chapter.
 Everything else, control plane, memory map, ECC behavior, the STU loader, the
