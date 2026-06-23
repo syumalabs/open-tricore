@@ -3,7 +3,9 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v1.6
+
+A DMA driver on the System DMA, validated on real silicon.
 
 - BSP DMA driver (`dma.c`/`dma.h`), blocking memory-to-memory transfers on the
   System DMA channel 0 with `dma_init` and `dma_copy`, validated on real silicon
