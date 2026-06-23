@@ -111,6 +111,17 @@ for the full build, flash, and debug flow.
   The SDMA is a safety DMA, so the driver also unlocks the channel's resource
   partition and grants the DMA tag access to the buffer memory.
 
+## Multicore
+
+- `smp.c` / `smp.h` start a second TriCore core. After reset only CPU0 runs and
+  the others sit in boot halt. `core_start(core, entry)` sets a secondary core's
+  program counter and releases its boot halt so it runs `entry`, and `core_id`
+  returns the index of the core executing the call. The secondary core starts
+  with no stack and no context save area, so `entry` must be a leaf that makes no
+  calls and needs no stack (a polling or compute loop), or set one up itself.
+  Cores share data through the LMU once its access-protection region is opened to
+  all masters, the same grant the DMA driver uses; `smp_demo` does this.
+
 ## Linker scripts
 
 - `ram.ld`, `hosted.ld` place code in PSRAM0 at `0x70100000` and data in DSPR0 at
@@ -144,6 +155,9 @@ for the full build, flash, and debug flow.
   then 25 percent.
 - `dma_demo.c` brings up DMA0, copies a 64-word buffer in the shared LMU with the
   DMA, and publishes the number of words that match the source to the heartbeat.
+- `smp_demo.c` starts CPU1 on a worker loop and runs an 8-round request and
+  response handshake with it through the shared LMU, publishing the number of
+  rounds that passed to the heartbeat.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.
