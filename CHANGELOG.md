@@ -3,7 +3,9 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v1.5
+
+A PWM driver on the eGTM, validated on real silicon.
 
 - BSP PWM driver (`pwm.c`/`pwm.h`), edge-aligned PWM on the eGTM TOM with
   `pwm_set` and a glitch-free `pwm_set_duty`, validated on real silicon by
