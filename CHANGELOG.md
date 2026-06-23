@@ -3,6 +3,16 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
+## Unreleased
+
+- PPU bring-up by clean-room reverse engineering, our own code runs on the PPU
+  scalar core (Synopsys ARC EV71) with no MetaWare and no NDA material
+- `tc-ppu`, load and start ARC code on the PPU, feed it input through LMU, and
+  read an arbitrary-width result back over a run-state handshake
+- `ppu/`, a worked example (sum of two operands) with build steps
+- `docs/ppu-reverse-engineering.md`, the full register-level findings, the boot
+  recipe, the memory map, the STU loader, and the data channels
+
 ## v1.0
 
 A complete, documented bare-metal development stack for the AURIX TC4D7 on Linux.

@@ -18,12 +18,13 @@ A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every l
 - Real UART serial console at 115200, printf goes out `/dev/ttyUSB0`
 - Boot from reset, flashed code runs on power-up with no debugger attached
 - Source-level debugging with [`tools/tc-gdbserver`](tools/tc-gdbserver), breakpoints, single step, registers, and memory in GDB, and GDB `load` programs flash directly over vFlash
+- Our own code runs on the PPU scalar core (Synopsys ARC EV71), a clean-room first, load and start ARC code, feed it input through LMU, and read an arbitrary-width result back, see [`ppu/`](ppu) and [`tools/tc-ppu`](tools/tc-ppu)
 
 Roadmap.
 
 - Interrupts and a timer tick in the BSP
 - More peripheral drivers, a GPIO API, timer, ADC, and SPI
-- The PPU, the TC4x vector accelerator and the standout differentiator
+- The PPU vector DSP, the scalar core is up (see above), the wide vector unit needs a vector toolchain, and a faster shared-memory result path
 - Debugger conveniences, watchpoints and the six cores as GDB threads
 
 ## Layout
@@ -34,11 +35,13 @@ open-tricore/
   scripts/       host setup automation (udev, FTDI, launch tas_server, build)
   toolchain/     build script for the open-source tricore-elf GCC and GDB
   bsp/tc4d7/     startup, watchdog disable, newlib stubs, and linker scripts (RAM, flash, boot)
+  ppu/           run code on the PPU scalar core (ARC EV71), example and build steps
   tools/         our original Apache-2.0 tools
     common/        shared MCD access layer (tcmcd), used by the tools below
     led-demo/      GPIO and LED control with register read-back verification
     tc-load/       load, run, flash, peek, watch, and boot over MCD
     tc-gdbserver/  GDB remote stub over MCD for source-level debugging
+    tc-ppu/        load, run, and exchange data with the PPU scalar core
   third_party/   upstream open-source deps as git submodules under their own licenses
   vendor/        git-ignored proprietary Infineon binaries you download yourself
 ```
