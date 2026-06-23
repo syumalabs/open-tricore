@@ -166,6 +166,51 @@ The remaining work is either to activate this debug port, or to obtain the reset
 entry and the core's CSM view from the ARC EV71 documentation and the MetaWare
 linker layout.
 
+## Update, exhaustive bring-up attempts and the convergent wall
+
+After extensive further work, including online research across the ARCv2 ISA,
+OpenOCD, embARC, and the public Infineon AURIX code examples, the boot mechanism
+is now fully understood and matches the shipped iLLD `IfxPpucCore_configureCoreAndRun`,
+CLC, VECBASE, kernel reset, then `CTRL = 0x3f09`. Two corrections to earlier
+assumptions were applied and tested:
+
+- The ARCv2 reset is address vectored, the first vector table entry holds the
+  address of the reset handler, the core reads that word and jumps. We build a
+  proper vector table (entry 0 = handler address) rather than placing
+  instructions at the base. Confirmed correct against Linux, embARC, and OpenOCD.
+- PPU code should be loaded through the non cached segment alias to avoid a stale
+  instruction cache.
+
+With those corrections the scalar core still does not execute. We then swept
+VECBASE across every plausible value (system view, the PPU side `0xA0000000`
+view, segment bases `0x0`, `0x9/0xA/0xB/0xC/0xD/0x80000000`), with a program that
+stores a marker to every candidate address view, and scanned all readable PPU
+memory afterward. No execution was observed for any combination.
+
+Three independent gates converge on the one missing fact, the ARC core's own
+address view of CSM (where VECBASE must point and where the loaded image must
+land):
+
+1. It is not in any public source. The ARCv2 mechanism is public, but the EV71
+   specific CSM and CCM base addresses are in the restricted reference manual and
+   the Synopsys EV71 databook.
+2. It is not observable. The ARC debug port that would reveal the PC is owned by
+   the OCDS, software writes to it bus error (an on chip CPU write traps), so the
+   PC cannot be read.
+3. It is not configurable from the TriCore side. The CSMAP and VMEMAP blocks are
+   access protection only, the ARC memory view is set by an ARC side aux register
+   (`AUX_VECMEM_REGION`, aux `0x544`) reachable only by code already running on
+   the core.
+
+The raw JTAG route was also evaluated and is a dead end for this part, public
+OpenOCD has no ARCv3 or EV backend, and the PPU is not a separately scannable
+JTAG TAP, it sits behind the chip level Cerberus or MCD fabric.
+
+The practical unblock is the Synopsys MetaWare toolkit for AURIX (its linker or
+TCF carries the exact CSM and reset addresses) or the restricted PPU chapter.
+Everything else, control plane, memory map, ECC behavior, the STU loader, the
+debug port and OCDS suspend, is solved and recorded above.
+
 ## Tooling
 
 All experiments were driven from small host programs linking the shared `tcmcd`
