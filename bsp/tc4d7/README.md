@@ -100,6 +100,17 @@ for the full build, flash, and debug flow.
   path, the access-protection, CMU fractional clock, and cluster layers are all
   handled in `pwm_init`.
 
+## DMA
+
+- `dma.c` / `dma.h` do blocking memory-to-memory transfers on the System DMA
+  (DMA0) channel 0. `dma_init` prepares the shared LMU for DMA use (it opens the
+  LMU region to the DMA's master tag and disables the ECC-on-uninitialized fault)
+  and must run before the buffers are filled. `dma_copy(dst, src, words)` copies
+  32-bit words and blocks until done. Buffers must live in the DMA-accessible
+  shared LMU (`DMA_LMU`), not a CPU-local scratchpad, which the DMA cannot write.
+  The SDMA is a safety DMA, so the driver also unlocks the channel's resource
+  partition and grants the DMA tag access to the buffer memory.
+
 ## Linker scripts
 
 - `ram.ld`, `hosted.ld` place code in PSRAM0 at `0x70100000` and data in DSPR0 at
@@ -131,6 +142,8 @@ for the full build, flash, and debug flow.
 - `pwm_demo.c` brings up the PLL and eGTM, drives a PWM on TOM channel 0, and
   self-tests by sampling the live output, confirming the measured duty matches 50
   then 25 percent.
+- `dma_demo.c` brings up DMA0, copies a 64-word buffer in the shared LMU with the
+  DMA, and publishes the number of words that match the source to the heartbeat.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.
