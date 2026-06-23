@@ -5,6 +5,9 @@ the on-board DAP debugger.
 
 ## Unreleased
 
+- BSP interrupts and a periodic timer tick, an interrupt vector table (`ivt.S`)
+  and `timer_tick_init` (`irq.c`) driving an STM compare interrupt on CPU0, with
+  `timer_demo.c`
 - PPU data-out generalized to result vectors, `tc-ppu call --out N` streams back
   N result words
 - `ppu_call` host helper in `tools/common/ppu.{c,h}`, a reusable layer over tcmcd

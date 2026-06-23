@@ -22,6 +22,21 @@ for the full build, flash, and debug flow.
   trimmed with the fractional divider because the backup clock measures slightly
   above its nominal 100 MHz.
 
+## Interrupts and timer
+
+- `ivt.S` is the interrupt vector table. The CPU jumps to `BIV + priority*32`, so
+  one 32-byte slot per priority. The slot saves the lower context, calls the C
+  handler with `call` (so its `ret` balances the upper context), restores, and
+  returns with `rfe`.
+- `irq.c` / `irq.h` provide `timer_tick_init(interval)`, which points `BIV` at the
+  table, sets a dedicated interrupt stack (`ISP`), arms STM compare 0 against the
+  free-running system timer, routes its request through the service node to CPU0,
+  and enables interrupts. The handler advances the compare one interval ahead,
+  clears the flag, and bumps `g_ticks`. Call it once after the runtime is up, then
+  `g_ticks` advances on its own.
+- The system timer lives in the CPU module (`STM` at `0xF88000xx`), and its
+  compare 0 drives service node `STMCPU0 SR2`, both verified on silicon.
+
 ## Linker scripts
 
 - `ram.ld`, `hosted.ld` place code in PSRAM0 at `0x70100000` and data in DSPR0 at
@@ -40,6 +55,8 @@ for the full build, flash, and debug flow.
 - `hello.c` and `hello_uart.c` exercise the hosted C runtime, the latter prints
   `printf`, `malloc`, and recursion output over the UART.
 - `uart_hello.c` is a minimal UART transmit demo with no libc.
+- `timer_demo.c` enables the periodic timer tick and publishes `g_ticks` to the
+  heartbeat, so the moving count over the debugger shows interrupts running.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.
