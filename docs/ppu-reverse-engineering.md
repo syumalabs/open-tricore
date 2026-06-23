@@ -271,13 +271,32 @@ value 99 it keeps running. So the core executed the loop, the adds, the compare,
 and the conditional branch, and produced the right answer. That is our own code
 running on the ARC EV71 scalar core.
 
-What is still open. Getting data back out to the TriCore through shared memory
-needs the ARC side address of CSM for data accesses (its data view differs from
-its fetch view, and plain stores land in private DCCM). The run state channel
-(sleep, halt, run, and timing) is enough to prove execution and to build simple
-result reporting, richer shared memory output is the next step. The OCDS owned
-debug port and the NDA memory map remain the only way to read the ARC PC and the
-private data map directly.
+Data channels, what works and what does not.
+
+The input direction works. The TriCore writes operands into LMU and the scalar
+core reads them back coherently. Verified by pre writing a marker from the
+debugger at several LMU aliases (`0x30000000`, `0x90000000`, `0xB0000000`,
+`0x20000000`, `0x40000000`) and having the ARC load and compare it, the core sees
+our values. A full data driven demo runs, the TriCore writes A, B, and an
+expected sum into LMU, the ARC loads A and B, adds them, compares to the expected
+value, and sleeps only when they match, with different operands giving the right
+answer each time. So we can feed the PPU input and it computes on it.
+
+The output direction through shared memory is still blocked. The scalar core's
+data reads are coherent with system memory, but its data writes are not visible
+to the TriCore. A write then read back inside the core is not even self coherent
+at the non cached aliases, and at the cacheable aliases the write sits in a write
+back cache that we cannot drain to LMU, the L1 `DC_FLSH` (aux `0x4b`) completes
+but the value never reaches LMU, the system level cache flush register (aux
+`0x904`) faults, and cache thrash eviction runs past the unknown LMU size and
+faults. This points to a cache or SLC layer between the PPU and LMU whose control
+interface is not public. So multi bit output to the TriCore is the remaining gap.
+
+What we do have for output is the run state channel, sleep, halt, run, plus
+timing, which is enough to return a result code or a small value, and is how the
+demos above report success. Richer shared memory output needs the SLC or cache
+control interface or the NDA memory map. The OCDS owned debug port remains the
+only way to read the ARC PC and the private data map directly.
 
 ## Tooling
 
