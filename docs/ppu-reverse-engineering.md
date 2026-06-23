@@ -309,9 +309,41 @@ sum back, and arbitrary values reconstruct exactly (`0x12345678`, `0xDEADBEEF`,
 `0x00000003`). So we have a complete pipeline, feed input through LMU, compute on
 the core, and read an arbitrary width result back, all clean room.
 
-It is bit serial and therefore slow, the direct shared memory path would be
-faster but is still blocked by the cache layer above. The OCDS owned debug port
-remains the only way to read the ARC PC and the private data map directly.
+It is bit serial and therefore slow. The direct shared memory path, faster by
+far, is solved below.
+
+## Direct shared memory output, solved
+
+The earlier conclusion that the core's writes are lost to an uncontrollable cache
+or SLC layer was wrong. The writes are dropped by the LMU access-protection unit,
+not a cache. The LMU APU defaults to read open to all masters but write granted
+only to the CPU, so the ARC reads system memory coherently (which is why input
+worked) while its stores to the LMU are silently dropped (no error). Cache
+flushes never helped because the data never had a cache problem.
+
+The fix is to grant the ARC's master tag write access to the LMU region, the same
+LMU APU mechanism the System DMA needs for its own writes. On LMU0 (module base
+`0xFB000000`), disable the ECC on uninitialized fault (`MEMCON` `0xFB000060` =
+`0x300`), then unlock the region config PROT (`PROTRGN` `0xFB000070`, the
+`IfxApProt` owner, run, config sequence), select region 0 with a separate write
+that leaves the state alone (`PROTRGN` = `0`, SWEN clear), write the shadow
+access-enable set at `0xFB000300` (WRA/WRB/RDA/RDB = `0xFFFFFFFF`, RGNLA =
+`0x90400000`, RGNUA = `0x90480000`), and commit (`PROTRGN` = run). After this the
+live `RGN0_ACCEN_WRA` at `0xFB000080` reads `0xFFFFFFFF` and ARC stores to the
+region land in the LMU.
+
+Proven with a controlled experiment. An ARC kernel writes `0xDEADBEEF` to
+`0xB0400000` and sleeps. With the grant the TriCore reads back `0xDEADBEEF`,
+without the grant (the only changed variable) the location keeps its seed value
+while the core still runs and sleeps. The full pipeline then works at memory
+bandwidth, the TriCore writes an input vector into the shared LMU, the core reads
+it, computes, and writes the result vector back to the LMU, and the TriCore reads
+the whole vector directly with no handshake. See `ppu/fastio.s` and
+`ppu/fastio_demo.c`. The grant must be issued by an on chip core, the debugger's
+own writes to the LMU APU config do not commit.
+
+One ISA note from this work, the multi bit `asl rA, rB, n` form faults the EV71
+scalar core, double with `add rA, rB, rB` instead.
 
 ## Tooling
 

@@ -13,7 +13,9 @@ What works today, all over the on-board debugger:
 
 - load and start arbitrary scalar ARC code on the PPU core
 - feed it input through LMU, which the core reads coherently
-- read an arbitrary-width result vector back through a run-state handshake
+- read results back two ways, directly out of the shared LMU at full bandwidth
+  (after granting the core's master tag, see below), or, with no grant, an
+  arbitrary-width result vector over a run-state handshake
 
 The vector DSP is not used here, that needs the MetaWare vector toolchain.
 
@@ -24,6 +26,10 @@ The vector DSP is not used here, that needs the MetaWare vector toolchain.
 - `sum.s`, adds two operands, returns one word.
 - `checksum.s`, sums a host-provided buffer, returns one word, exercises the
   input channel with a variable-length buffer.
+- `fastio.s`, a compute kernel that returns a result vector through the shared
+  LMU directly, no handshake. Reads 16 words, doubles them, writes 16 back.
+- `fastio_demo.c`, a self-contained TriCore program that grants the LMU, boots
+  `fastio.s`, feeds inputs, and reads the result vector straight out of the LMU.
 
 ## Build and run
 
@@ -65,15 +71,24 @@ The recipe, confirmed on silicon:
 4. Kernel reset, then `PPU_CTRL = 0x3f09` to run.
 5. `PPU_STAT` RUN bits report 0 running, 1 sleeping, 2 halted.
 
-The data channel works around a one-way coherency. The core reads host-written
-LMU coherently, so input is a plain memory write. The core's data *writes* are not
-visible to the host (they sit behind a cache layer with no public control), so
-output uses the run state instead. The host posts a command word at `0xB0000300`
-naming a result word and bit, the core **halts** to signal a 1 and **keeps
-polling** to signal a 0, and the host resumes the core after each halt. It is
-bit-serial and therefore slow, but it returns arbitrary-width results with no
-documentation.
+Input is a plain memory write, the core reads host-written LMU coherently. For
+output there are two paths.
 
-To write your own kernel, copy an example and replace `compute`, read inputs from
-`0xB0000310`, write result words to the `RESULT` scratch, and return. The runtime
-streams them back, and `tc-ppu call --out N` reads N of them.
+**Direct, full bandwidth (`fastio.s` / `fastio_demo.c`).** The core writes its
+results straight into the shared LMU and the TriCore reads them back like any
+memory. This needs one setup step: out of reset the LMU access-protection unit
+lets every master *read* but only the CPU *write*, so an ARC store to the LMU is
+silently dropped. Granting the ARC's master tag write access to the LMU region
+(the same LMU APU mechanism the DMA driver uses) makes the stores land. The
+earlier bring-up read this drop as an uncontrollable cache layer, it is an
+access-protection drop. `fastio_demo.c` does the grant, boots the kernel, and
+reads the result vector with no handshake.
+
+**Run-state handshake (`rt.inc`, no grant needed).** Without the LMU grant the
+core's writes are invisible, so output rides the run state. The host posts a
+command word at `0xB0000300` naming a result word and bit, the core **halts** to
+signal a 1 and **keeps polling** to signal a 0, and the host resumes the core
+after each halt. Bit-serial and slow, but it returns arbitrary-width results and
+needs no setup. To write a handshake kernel, copy an example and replace
+`compute`, read inputs from `0xB0000310`, write result words to the `RESULT`
+scratch, and return, then `tc-ppu call --out N` reads N of them.

@@ -3,6 +3,17 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
+## Unreleased
+
+- PPU fast shared-memory output, the scalar core now returns results straight
+  through the shared LMU at full bandwidth instead of only the bit-serial
+  run-state handshake. The core's LMU writes were being dropped by the LMU
+  access-protection unit (read-open, write-CPU-only out of reset), not by an
+  uncontrollable cache layer as previously thought, granting the core's master
+  tag write access to the LMU region fixes it. With `ppu/fastio.s` (compute
+  kernel) and `ppu/fastio_demo.c` (on-chip pipeline, verified on real silicon),
+  and updated PPU notes in `docs/ppu-reverse-engineering.md`
+
 ## v1.6
 
 A DMA driver on the System DMA, validated on real silicon.

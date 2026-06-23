@@ -18,7 +18,7 @@ A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every l
 - Real UART serial console at 115200, printf goes out `/dev/ttyUSB0`
 - Boot from reset, flashed code runs on power-up with no debugger attached
 - Source-level debugging with [`tools/tc-gdbserver`](tools/tc-gdbserver), breakpoints, watchpoints, single step, registers, and memory in GDB, the six cores as GDB threads, and GDB `load` programs flash directly over vFlash
-- Our own code runs on the PPU scalar core (Synopsys ARC EV71), a clean-room first, load and start ARC code, feed it input through LMU, and read an arbitrary-width result back, see [`ppu/`](ppu) and [`tools/tc-ppu`](tools/tc-ppu)
+- Our own code runs on the PPU scalar core (Synopsys ARC EV71), a clean-room first, load and start ARC code, feed it input through LMU, and read results back, either straight out of the shared LMU at full bandwidth or over a run-state handshake, see [`ppu/`](ppu) and [`tools/tc-ppu`](tools/tc-ppu)
 - Interrupts and a periodic timer tick in the BSP, an interrupt vector table and an STM compare interrupt on CPU0, see [`bsp/tc4d7`](bsp/tc4d7)
 - A GPIO API in the BSP, per-pin direction and mode, atomic set, clear, write, toggle, and read, see [`bsp/tc4d7`](bsp/tc4d7)
 - STM-based timing in the BSP, microsecond and millisecond busy-wait delays and a monotonic time source, see [`bsp/tc4d7`](bsp/tc4d7)
@@ -31,7 +31,7 @@ A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every l
 Roadmap.
 
 - More peripheral drivers, for example I2C or CAN
-- The PPU vector DSP, the scalar core is up (see above), the wide vector unit needs a vector toolchain, and a faster shared-memory result path
+- The PPU vector DSP, the scalar core is up with a full-bandwidth shared-memory result path (see above), the wide vector unit additionally needs the MetaWare vector toolchain
 
 ## Layout
 
