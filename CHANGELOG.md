@@ -3,6 +3,15 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
+## Unreleased
+
+- BSP PWM driver (`pwm.c`/`pwm.h`), edge-aligned PWM on the eGTM TOM with
+  `pwm_set` and a glitch-free `pwm_set_duty`, validated on real silicon by
+  sampling the live TOM output (50 and 25 percent duty both tracked the
+  configured value) with no external wiring, with `pwm_demo.c`
+- BSP `clock_enable_egtm` enables the eGTM kernel clock fGTM from the peripheral
+  PLL, the eGTM timers do not run without it
+
 ## v1.4
 
 An ADC (TMADC) driver with start-up calibration, validated on real silicon.

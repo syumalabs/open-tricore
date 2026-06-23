@@ -88,6 +88,18 @@ for the full build, flash, and debug flow.
   self-test: VSSM (ground) reads about 0 and VDDK1 (a core supply) reads a large
   value, which is what `adc_demo` checks.
 
+## PWM
+
+- `pwm.c` / `pwm.h` generate edge-aligned PWM on the eGTM TOM (Timer Output
+  Module). `pwm_init` brings up eGTM cluster 0 (module clock, CMU, fixed clock,
+  submodule enables), `pwm_set(ch, period, duty)` configures and starts a TOM
+  channel (period and duty in TOM-clock ticks, output high for the first `duty`
+  ticks), and `pwm_set_duty` updates the duty glitch-free at the next period. The
+  eGTM runs on the PLL clock, so call `clock_init_pll` and `clock_enable_egtm`
+  first. The eGTM is the largest module on the chip; this is a minimal TOM PWM
+  path, the access-protection, CMU fractional clock, and cluster layers are all
+  handled in `pwm_init`.
+
 ## Linker scripts
 
 - `ram.ld`, `hosted.ld` place code in PSRAM0 at `0x70100000` and data in DSPR0 at
@@ -116,6 +128,9 @@ for the full build, flash, and debug flow.
 - `adc_demo.c` brings up the PLL and ADC and self-tests against the internal
   monitor channels, publishing `0xADC0` to the heartbeat when ground reads about 0
   and a supply reads a large value.
+- `pwm_demo.c` brings up the PLL and eGTM, drives a PWM on TOM channel 0, and
+  self-tests by sampling the live output, confirming the measured duty matches 50
+  then 25 percent.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.

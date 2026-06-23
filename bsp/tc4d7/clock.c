@@ -17,6 +17,7 @@
 #define CCUSTAT    0xF0064404u   /* LCK[31] busy flag */
 #define PERCCUCON0 0xF0064420u   /* QSPIDIV[19:16], CLKSELQSPI[21:20] */
 #define PERCCUCON1 0xF0064424u   /* ADCPERON[16] */
+#define SYSCCUCON1 0xF0064414u   /* EGTMDIV[15:12], UP[30] */
 
 /* PROTE fields: STATE[2:0], SWEN[3], ODEF[30], OWEN[31]; STATE values run=4, config=1. */
 static void prot_unlock(void)
@@ -74,6 +75,19 @@ int clock_init_pll(void)
 
     prot_relock();
     return locked;
+}
+
+void clock_enable_egtm(void)
+{
+    /* SYSCCUCON1 is access-protected and needs UP to commit. Owner already defined
+       by clock_init_pll. EGTMDIV 1 makes fGTM = fsource1. */
+    R(PROTE) = (1u << 3) | 1u;          /* run -> config */
+    wait_lck();
+    unsigned v = R(SYSCCUCON1);
+    v = (v & ~(0xFu << 12)) | (1u << 12) | (1u << 30); /* EGTMDIV=1, UP=1 */
+    R(SYSCCUCON1) = v;
+    wait_lck();
+    R(PROTE) = (1u << 3) | 4u;          /* config -> run */
 }
 
 void clock_enable_adc(void)

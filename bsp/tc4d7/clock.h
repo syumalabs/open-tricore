@@ -30,6 +30,10 @@ int clock_init_pll(void);
    clock_init_pll(). */
 void clock_enable_adc(void);
 
+/* Enable the eGTM kernel clock fGTM from the peripheral PLL (SYSCCUCON1.EGTMDIV).
+   Without it the eGTM timers do not run. Call after clock_init_pll(). */
+void clock_enable_egtm(void);
+
 /* Select the peripheral PLL as the QSPI kernel clock (fQSPI) with divider divsel.
    divsel is the PERCCUCON0.QSPIDIV field: 1 divides by 1, up to 15. IMPORTANT:
    divsel 0 switches fQSPI OFF entirely, so always pass at least 1. Call after
