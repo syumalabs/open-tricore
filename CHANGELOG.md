@@ -12,6 +12,9 @@ the on-board DAP debugger.
   local data scratchpad for stack and CSA. Validated on real silicon with
   `smp_c_demo.c`, where CPU1 answers requests by computing Fibonacci numbers
   recursively and CPU0 checks every answer
+- All six cores brought up, `smp_all_demo.c` starts every secondary core
+  (CPU1..CPU5) with the C runtime and runs a recursive worker on each, so all six
+  TriCore cores execute our code at once, validated on real silicon
 
 ## v1.8
 

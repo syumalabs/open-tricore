@@ -167,6 +167,9 @@ for the full build, flash, and debug flow.
 - `smp_c_demo.c` starts CPU1 with a full C runtime and runs a worker that answers
   each request by computing a Fibonacci number recursively, proving function
   calls and stack work on the secondary core, and checks each answer on CPU0.
+- `smp_all_demo.c` starts all five secondary cores with the C runtime and runs a
+  recursive worker on each, so all six TriCore cores run our code at once, and
+  CPU0 checks every core's result.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.
