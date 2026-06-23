@@ -3,6 +3,21 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
+## Unreleased
+
+- BSP QSPI (SPI) master (`spi.c`/`spi.h`), an 8-bit mode-0 master on channel 0
+  with blocking full-duplex `spi_transfer`, validated on real silicon over the
+  QSPI internal loopback (no external wiring), with `spi_demo.c`
+- BSP peripheral PLL bring-up (`clock.c`/`clock.h`), `clock_init_pll` powers the
+  peripheral PLL from the always-on backup clock with no external crystal, locks
+  it, and routes the peripheral clock tree to it, and `clock_qspi_select_pll`
+  points the QSPI kernel clock at the PLL. Needed because the QSPI shift engine
+  runs on the PLL clock, which a bare reset leaves off. The clock-tree and PLL
+  registers are unlocked through the access-protection unit
+- Hardware note, the QSPI clock divider must be non-zero, a divider of 0 switches
+  the shift-engine clock off entirely (the root cause that made the engine look
+  dead while register access worked)
+
 ## v1.2
 
 A peripheral HAL, a periodic timer tick, a much stronger debugger, and PPU

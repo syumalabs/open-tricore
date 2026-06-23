@@ -55,6 +55,28 @@ for the full build, flash, and debug flow.
   measured ~50.3 MHz STM clock (the ~100.7 MHz backup clock halved), override it
   if your clock setup differs. The 32-bit counter wraps about every 85 seconds.
 
+## Clock
+
+- `clock.c` / `clock.h` bring up the peripheral PLL. After a bare reset the chip
+  runs on the always-on backup clock with the PLLs and external oscillator off,
+  which is fine for STM, ports, and the UART but not for peripherals whose kernel
+  clock comes from a PLL. `clock_init_pll` powers the peripheral PLL from the
+  backup clock (no crystal needed), waits for lock, and routes the peripheral
+  clock tree to it. `clock_qspi_select_pll(divsel)` then points the QSPI kernel
+  clock at the PLL. The CCU and PLL registers are access-protected (the `PROTE`
+  unit), which the module unlocks and re-locks around its writes.
+
+## SPI
+
+- `spi.c` / `spi.h` are a minimal QSPI master, 8-bit, MSB-first, mode 0, on
+  channel 0. `spi_init(qspi, loopback)` configures a module (`SPI_QSPI0` and
+  friends); `spi_transfer` does a blocking full-duplex byte exchange. The shift
+  engine runs on the PLL clock, so call `clock_init_pll` and
+  `clock_qspi_select_pll(1)` first. With `loopback` set, the module ties its own
+  output to its input internally, so a transfer is verifiable with no wiring.
+  Note: the QSPI clock divider must be non-zero; a divider of 0 switches the
+  shift-engine clock off entirely.
+
 ## Linker scripts
 
 - `ram.ld`, `hosted.ld` place code in PSRAM0 at `0x70100000` and data in DSPR0 at
@@ -78,6 +100,8 @@ for the full build, flash, and debug flow.
 - `gpio_demo.c` blinks LED1 (P03.9) through the GPIO API and reads the pin back.
 - `timing_demo.c` publishes `tc_millis` to the heartbeat and paces the loop with
   `tc_delay_ms`, showing the STM timing helper.
+- `spi_demo.c` brings up the PLL, enables QSPI internal loopback, and exchanges a
+  set of bytes, publishing the round-trip count to the heartbeat (6 = all good).
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.
