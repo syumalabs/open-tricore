@@ -292,11 +292,26 @@ but the value never reaches LMU, the system level cache flush register (aux
 faults. This points to a cache or SLC layer between the PPU and LMU whose control
 interface is not public. So multi bit output to the TriCore is the remaining gap.
 
-What we do have for output is the run state channel, sleep, halt, run, plus
-timing, which is enough to return a result code or a small value, and is how the
-demos above report success. Richer shared memory output needs the SLC or cache
-control interface or the NDA memory map. The OCDS owned debug port remains the
-only way to read the ARC PC and the private data map directly.
+Full width output now works through a run control handshake, not shared memory.
+The trick is the reversible halt state. The `sleep` instruction cannot be woken
+from the TriCore side, `CTRL.REQWU` is a no op here, so a sleeping core stays
+asleep. But the halt state is reversible, the ARC `flag 1` instruction halts the
+core (`STAT` RUN bits = 2) and a `CTRL` poke (`0x3f0d` then back to `0x3f09`)
+resumes it, the core continues at the next instruction.
+
+That gives a clocked bit serial channel. The ARC computes a result, then for each
+bit index requested it either halts (bit is 1) or keeps polling (bit is 0). The
+TriCore drives it over LMU, which the core reads coherently, by writing a token
+holding the bit index, then reading `STAT`, RUN = 2 means the bit is 1 and the
+TriCore resumes the core, RUN = 0 means the bit is 0. Verified end to end, the
+TriCore writes two operands into LMU, the core adds them and streams the 32 bit
+sum back, and arbitrary values reconstruct exactly (`0x12345678`, `0xDEADBEEF`,
+`0x00000003`). So we have a complete pipeline, feed input through LMU, compute on
+the core, and read an arbitrary width result back, all clean room.
+
+It is bit serial and therefore slow, the direct shared memory path would be
+faster but is still blocked by the cache layer above. The OCDS owned debug port
+remains the only way to read the ARC PC and the private data map directly.
 
 ## Tooling
 
