@@ -3,7 +3,7 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v1.1
 
 - PPU bring-up by clean-room reverse engineering, our own code runs on the PPU
   scalar core (Synopsys ARC EV71) with no MetaWare and no NDA material
