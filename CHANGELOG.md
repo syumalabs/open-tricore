@@ -3,7 +3,11 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v2.1
+
+A CAN driver on the MCMCAN, a classic-CAN controller validated on real silicon
+by sending a frame in internal loopback and receiving it back with the id,
+length, and payload intact, so it needs no external wiring or transceiver.
 
 - BSP CAN driver (`can.c`/`can.h`), a classic-CAN controller on MCMCAN CAN0 node 0
   with `can_init`, `can_send`, and `can_recv`, validated on real silicon by sending
