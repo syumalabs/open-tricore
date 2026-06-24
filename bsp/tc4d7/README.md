@@ -165,6 +165,11 @@ for the full build, flash, and debug flow.
 
 ## Demos
 
+Each driver ships a self-test demo that publishes a result to its heartbeat slot.
+`scripts/test-bsp.sh` builds, runs, and checks every one of them on the board in a
+single pass and prints a pass/fail line per demo, so the whole stack is verifiable
+with one command (it needs the TAS server up and the toolchain built).
+
 - `blink.c` toggles P03.9, the LED the read-write demo drives.
 - `selftest.c` proves execution four ways, a parked PC, a challenge response, a
   moving heartbeat, and a done marker, all read back over the debugger.
