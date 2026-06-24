@@ -40,6 +40,13 @@ void clock_enable_egtm(void);
    1 (8 gives a robust ~12.5 MHz). Call after clock_init_pll(). */
 void clock_enable_i2c(unsigned divsel);
 
+/* Enable the MCMCAN clocks: the async CAN kernel clock fMCAN = fsource1 (fPLL1) /
+   MCANDIV from PERCCUCON0 (CLKSELMCAN=1, MCANDIV=divsel) and the MCANH host clock
+   from SYSCCUCON1. Both default off; without fMCAN the node never leaves init and
+   without MCANH the message-RAM interface is dead. divsel 0 gates fMCAN off, pass
+   at least 1 (8 gives a robust rate). Call after clock_init_pll(). */
+void clock_enable_can(unsigned divsel);
+
 /* Select the peripheral PLL as the QSPI kernel clock (fQSPI) with divider divsel.
    divsel is the PERCCUCON0.QSPIDIV field: 1 divides by 1, up to 15. IMPORTANT:
    divsel 0 switches fQSPI OFF entirely, so always pass at least 1. Call after

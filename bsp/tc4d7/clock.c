@@ -77,6 +77,24 @@ int clock_init_pll(void)
     return locked;
 }
 
+void clock_enable_can(unsigned divsel)
+{
+    /* The MCMCAN needs two clocks, both default off: the async CAN kernel clock
+       fMCAN = fsource1 (fPLL1) / MCANDIV, selected in PERCCUCON0, which clocks the
+       node protocol engine and bit timing; and the MCANH host clock from
+       SYSCCUCON1.MCANHDIV, which clocks the message-RAM interface. Owner already
+       defined by clock_init_pll. divsel 0 gates fMCAN off, pass at least 1. */
+    R(PROTE) = (1u << 3) | 1u;          /* run -> config */
+    wait_lck();
+    R(PERCCUCON0) = (R(PERCCUCON0) & ~0x3Fu) | (1u << 4) | (divsel & 0xFu); /* CLKSELMCAN=1, MCANDIV=divsel */
+    wait_lck();
+    unsigned vc = R(SYSCCUCON1);
+    vc = (vc & ~(0xFu << 16)) | (1u << 16) | (1u << 30); /* MCANHDIV=1, UP=1 */
+    R(SYSCCUCON1) = vc;
+    wait_lck();
+    R(PROTE) = (1u << 3) | 4u;          /* config -> run */
+}
+
 void clock_enable_egtm(void)
 {
     /* SYSCCUCON1 is access-protected and needs UP to commit. Owner already defined

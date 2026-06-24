@@ -3,6 +3,22 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
+## Unreleased
+
+- BSP CAN driver (`can.c`/`can.h`), a classic-CAN controller on MCMCAN CAN0 node 0
+  with `can_init`, `can_send`, and `can_recv`, validated on real silicon by sending
+  a frame in internal loopback and receiving it back with the id, length, and
+  payload intact, so it self-tests with no external wiring or transceiver, with
+  `can_demo.c`. The bring-up turned on one subtlety, the MCR change-enable bits
+  CCCE and CI do not read back, so the value must be built in a single local and
+  written without a read-back in between, otherwise the protected clock-select and
+  RAM-init writes are dropped and the node never gets a clock and never leaves
+  init. Internal loopback is the classic Bosch path (CCCR.TEST then TEST.LBCK then
+  CCCR.MON), not PORTCTRL.LBM which is external loopback and gets no acknowledge
+- BSP `clock_enable_can` enables the two MCMCAN clocks from the peripheral PLL, the
+  async CAN kernel clock fMCAN (PERCCUCON0) that clocks the protocol engine and the
+  MCANH host clock (SYSCCUCON1) for the message-RAM interface, both off at reset
+
 ## v2.0
 
 An I2C master driver, validated on real silicon against the board's onboard

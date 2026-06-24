@@ -123,6 +123,19 @@ for the full build, flash, and debug flow.
   single-CLC enable like the QSPI driver leaves the module unreachable. The
   board's onboard EEPROM at 0x50 makes the master self-testable with no wiring.
 
+## CAN
+
+- `can.c` / `can.h` are a classic-CAN controller on the MCMCAN (CAN0 node 0).
+  `can_init` brings the node up with one dedicated TX buffer and a 2-entry RX
+  FIFO, optionally in internal loopback, `can_send` transmits a standard-id frame
+  of up to 8 bytes, and `can_recv` reads one back. Call `clock_init_pll` and
+  `clock_enable_can` first; fMCAN from the PLL clocks the protocol engine. The MCR
+  change-enable bits (CCCE, CI) do not read back, so the clock-select and RAM-init
+  values are built in a single local and written without a read-back in between,
+  or the node never gets a clock and never leaves init. Internal loopback is the
+  classic Bosch sequence (CCCR.TEST, TEST.LBCK, CCCR.MON), which transmits with a
+  self-generated ACK so the controller self-tests with no transceiver or wiring.
+
 ## Multicore
 
 - `smp.c` / `smp.h` start a second TriCore core. After reset only CPU0 runs and
@@ -185,6 +198,9 @@ for the full build, flash, and debug flow.
 - `i2c_demo.c` brings up the I2C master and self-tests against the onboard EEPROM,
   publishing 0x12C0AC to the heartbeat when the EEPROM ACKs at 0x50, an unused
   address NACKs, and a data write is acknowledged.
+- `can_demo.c` brings up the CAN controller in internal loopback, sends a frame,
+  receives it back, and publishes 0x0CA00D to the heartbeat when the id, length,
+  and payload all match.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.

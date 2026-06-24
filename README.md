@@ -28,11 +28,12 @@ A complete bare-metal C and C++ development flow for the TC4D7 on Linux, every l
 - A PWM driver in the BSP, edge-aligned PWM on the eGTM TOM with runtime duty update, self-tested on chip by sampling the live output (50 and 25 percent duty both tracked), see [`bsp/tc4d7`](bsp/tc4d7)
 - A DMA driver in the BSP, blocking memory-to-memory transfers on the System DMA, including the resource-partition and memory access-protection setup the transfer needs, self-tested on chip by copying and verifying a buffer, see [`bsp/tc4d7`](bsp/tc4d7)
 - An I2C master in the BSP, a 7-bit I2C0 master at ~100 kHz with byte transfers and address probing, self-tested on chip against the board's onboard EEPROM with no external wiring (it acknowledges at 0x50, an unused address does not), see [`bsp/tc4d7`](bsp/tc4d7)
+- A CAN driver in the BSP, a classic-CAN controller on the MCMCAN with frame send and receive, self-tested on chip by sending a frame in internal loopback and receiving it back with the id, length, and payload intact, so it needs no external wiring or transceiver, see [`bsp/tc4d7`](bsp/tc4d7)
 - Multicore in the BSP, CPU0 brings the other five TriCore cores out of boot halt and runs code on them, with an optional full C runtime (each core sets up its own stack and context save area) so the secondary cores run ordinary C with function calls and recursion, verified on chip with all six cores active, a CPU0 to CPU1 handshake, and a recursive worker running on every core, see [`bsp/tc4d7`](bsp/tc4d7)
 
 Roadmap.
 
-- More peripheral drivers, for example CAN
+- More peripheral drivers and higher-level protocol support
 - The PPU vector DSP, the scalar core is up with a full-bandwidth shared-memory result path (see above), the wide vector unit additionally needs the MetaWare vector toolchain
 
 ## Layout
