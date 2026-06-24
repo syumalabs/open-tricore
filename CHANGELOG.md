@@ -3,6 +3,20 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
+## Unreleased
+
+- BSP I2C master driver (`i2c.c`/`i2c.h`), a 7-bit I2C0 master at ~100 kHz with
+  `i2c_init`, `i2c_write`, and `i2c_probe`, validated on real silicon against the
+  TC4D7 Lite Kit's onboard EEPROM (it ACKs at 0x50, an unused address NACKs, and
+  a non-destructive data write is acknowledged), so it needs no external wiring,
+  with `i2c_demo.c`. The I2C is a two-block module: the real module clock gate is
+  the wrapper CLC at the module base + 0x10000 and must be opened before the
+  kernel CLC1 at base + 0, otherwise every register access is a bus error, this
+  is why a single-CLC bring-up copied from the QSPI driver left it unreachable
+- BSP `clock_enable_i2c` enables the I2C kernel clock fI2C from the peripheral
+  PLL (PER PLL output 2 plus PERCCUCON0.I2CDIV); fI2C generates SCL, so without
+  it a transfer makes no clock
+
 ## v1.9
 
 Multicore reaches all six cores, every TriCore core runs our C with a full

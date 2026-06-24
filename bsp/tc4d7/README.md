@@ -111,6 +111,18 @@ for the full build, flash, and debug flow.
   The SDMA is a safety DMA, so the driver also unlocks the channel's resource
   partition and grants the DMA tag access to the buffer memory.
 
+## I2C
+
+- `i2c.c` / `i2c.h` are a minimal 7-bit I2C master on I2C0. `i2c_init` brings the
+  module up on SCL P13.1 / SDA P13.2 (the Lite Kit's onboard bus) at ~100 kHz,
+  `i2c_write` does a START, address, data, STOP transfer and reports ACK or NACK,
+  and `i2c_probe` address-only-probes a device. Call `clock_init_pll` and
+  `clock_enable_i2c` first; fI2C from the PLL generates SCL. The I2C is a
+  two-block module: the real module clock gate is the wrapper CLC at the module
+  base + 0x10000, which must be opened before the kernel CLC1 at base + 0, so a
+  single-CLC enable like the QSPI driver leaves the module unreachable. The
+  board's onboard EEPROM at 0x50 makes the master self-testable with no wiring.
+
 ## Multicore
 
 - `smp.c` / `smp.h` start a second TriCore core. After reset only CPU0 runs and
@@ -170,6 +182,9 @@ for the full build, flash, and debug flow.
 - `smp_all_demo.c` starts all five secondary cores with the C runtime and runs a
   recursive worker on each, so all six TriCore cores run our code at once, and
   CPU0 checks every core's result.
+- `i2c_demo.c` brings up the I2C master and self-tests against the onboard EEPROM,
+  publishing 0x12C0AC to the heartbeat when the EEPROM ACKs at 0x50, an unused
+  address NACKs, and a data write is acknowledged.
 
 Register definitions are taken from the iLLD TC4Dx headers under
 `third_party/illd_release_tc4x`.

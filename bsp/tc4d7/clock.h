@@ -34,6 +34,12 @@ void clock_enable_adc(void);
    Without it the eGTM timers do not run. Call after clock_init_pll(). */
 void clock_enable_egtm(void);
 
+/* Enable the I2C kernel clock fI2C from the peripheral PLL (PER PLL output 2 plus
+   PERCCUCON0.I2CDIV = divsel). fI2C generates SCL; with it off the I2C engine
+   produces no clock and a transfer hangs. divsel 0 gates fI2C off, pass at least
+   1 (8 gives a robust ~12.5 MHz). Call after clock_init_pll(). */
+void clock_enable_i2c(unsigned divsel);
+
 /* Select the peripheral PLL as the QSPI kernel clock (fQSPI) with divider divsel.
    divsel is the PERCCUCON0.QSPIDIV field: 1 divides by 1, up to 15. IMPORTANT:
    divsel 0 switches fQSPI OFF entirely, so always pass at least 1. Call after

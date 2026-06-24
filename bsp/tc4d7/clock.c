@@ -101,6 +101,23 @@ void clock_enable_adc(void)
     R(PROTE) = (1u << 3) | 4u;          /* config -> run */
 }
 
+void clock_enable_i2c(unsigned divsel)
+{
+    /* fI2C = fsource2 / I2CDIV. fsource2 is PER PLL output 2, whose K3 divider
+       clock_init_pll does not set up, so give it a live value first, then set
+       PERCCUCON0.I2CDIV (0 gates fI2C off, so SCL never toggles). Owner already
+       defined by clock_init_pll. */
+    R(PROTE) = (1u << 3) | 1u;          /* run -> config */
+    wait_lck();
+    unsigned p1 = R(PERPLLCON1);
+    p1 = (p1 & ~(0x7u << 8) & ~(0xFu << 12)) | (1u << 8) | (1u << 12); /* K3DIV=1, K3PREDIV=1 */
+    R(PERPLLCON1) = p1;
+    wait_lck();
+    R(PERCCUCON0) = (R(PERCCUCON0) & ~(0xFu << 24)) | ((divsel & 0xFu) << 24); /* I2CDIV */
+    wait_lck();
+    R(PROTE) = (1u << 3) | 4u;          /* config -> run */
+}
+
 void clock_qspi_select_pll(unsigned divsel)
 {
     /* PERCCUCON0 is access-protected once an owner is defined. The owner is
