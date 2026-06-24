@@ -3,7 +3,12 @@
 All work is validated on real silicon, an Infineon AURIX TC4D7 Lite Kit, over
 the on-board DAP debugger.
 
-## Unreleased
+## v2.0
+
+An I2C master driver, validated on real silicon against the board's onboard
+EEPROM with no external wiring. With this the bare-metal stack covers the full
+planned peripheral set and every TriCore core, all brought up by clean-room
+reverse engineering.
 
 - BSP I2C master driver (`i2c.c`/`i2c.h`), a 7-bit I2C0 master at ~100 kHz with
   `i2c_init`, `i2c_write`, and `i2c_probe`, validated on real silicon against the
