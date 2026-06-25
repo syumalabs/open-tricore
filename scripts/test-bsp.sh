@@ -40,6 +40,7 @@ MANIFEST=(
   "dma|dma.c|64"
   "i2c|clock.c i2c.c|1228972"      # 0x12C0AC
   "can|clock.c can.c|827405"       # 0x0CA00D
+  "flash|clock.c flash.c|14617105" # 0xDF0A11
   "smp|smp.c|8"
   "smp_c|smp.c|16"
   "smp_all|smp.c|5"

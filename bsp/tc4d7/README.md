@@ -136,6 +136,19 @@ for the full build, flash, and debug flow.
   classic Bosch sequence (CCCR.TEST, TEST.LBCK, CCCR.MON), which transmits with a
   self-generated ACK so the controller self-tests with no transceiver or wiring.
 
+## Data flash
+
+- `flash.c` / `flash.h` are an on-chip data flash (DFLASH) driver for persistent
+  storage with no external memory. `flash_erase_sector` erases the DFLASH sector
+  at an address, `flash_write_page` programs one 8-byte page (the DFLASH program
+  granularity), and `flash_read32` is an ordinary load. Commands go through the
+  DMU command interface (writes to `0xF8080000` offsets); completion is the
+  `REQDONE` bit of `DMU_HCI_STATUS`. Two gotchas the driver handles: `ORIER` in
+  `DMU_HCI_ERR` is a benign pre-existing UCB ECC flag and is masked out of the
+  error check, and a read issued immediately after the command interface returns
+  to read mode faults, so the driver lets the flash settle first. Only DFLASH
+  (`0xAE000000`) is touched, never the program flash that holds code.
+
 ## Multicore
 
 - `smp.c` / `smp.h` start a second TriCore core. After reset only CPU0 runs and
